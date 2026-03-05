@@ -3,11 +3,25 @@ import { useState } from 'react'
 import { createSubmission } from '../../../lib/api'
 import type { Amenity, SubmissionPayload } from '../../../types/domain'
 
-export type FormState = SubmissionPayload & {
+type FormOverrides =
+  | 'courtsIndoor'
+  | 'courtsOutdoor'
+  | 'surface'
+  | 'phone'
+  | 'reservationUrl'
+  | 'amenities'
+  | 'naverMapUrl'
+  | 'submitter'
+  | 'note'
+  | 'priceNote'
+
+export type FormState = Omit<SubmissionPayload, FormOverrides> & {
   courtsIndoor: string
   courtsOutdoor: string
   surface: string
   phone: string
+  priceNote: string
+  note: string
   reservationUrl: string
   amenities: Amenity[]
   naverMapUrl: string
