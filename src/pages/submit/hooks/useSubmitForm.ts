@@ -1,24 +1,17 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import type { Amenity, ReservationType } from '../types'
+import { createSubmission } from '../../../lib/api'
+import type { Amenity, SubmissionPayload } from '../../../types/domain'
 
-export interface FormState {
-  name: string
-  addressRoad: string
-  regionSido: string
-  regionSigungu: string
-  indoor: boolean
-  outdoor: boolean
-  courtsIndoor: number
-  courtsOutdoor: number
+export type FormState = SubmissionPayload & {
+  courtsIndoor: string
+  courtsOutdoor: string
   surface: string
   phone: string
-  reservationType: ReservationType
   reservationUrl: string
-  priceNote: string
   amenities: Amenity[]
   naverMapUrl: string
   submitter: string
-  note: string
 }
 
 const initialState: FormState = {
@@ -26,10 +19,8 @@ const initialState: FormState = {
   addressRoad: '',
   regionSido: '',
   regionSigungu: '',
-  indoor: true,
-  outdoor: true,
-  courtsIndoor: 1,
-  courtsOutdoor: 1,
+  courtsIndoor: '',
+  courtsOutdoor: '',
   surface: '',
   phone: '',
   reservationType: 'public',
@@ -44,8 +35,19 @@ const initialState: FormState = {
 export function useSubmitForm() {
   const [form, setForm] = useState<FormState>(initialState)
   const [submitted, setSubmitted] = useState(false)
+  const queryClient = useQueryClient()
+
+  const mutation = useMutation({
+    mutationFn: createSubmission,
+    onSuccess: () => {
+      setSubmitted(true)
+      setForm(initialState)
+      queryClient.invalidateQueries({ queryKey: ['submissions'] })
+    },
+  })
 
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    setSubmitted(false)
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -60,12 +62,27 @@ export function useSubmitForm() {
   const reset = () => {
     setForm(initialState)
     setSubmitted(false)
+    mutation.reset()
   }
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setSubmitted(true)
+    const payload: SubmissionPayload = {
+      ...form,
+      courtsIndoor: form.courtsIndoor === '' ? undefined : Number(form.courtsIndoor),
+      courtsOutdoor: form.courtsOutdoor === '' ? undefined : Number(form.courtsOutdoor),
+    }
+    mutation.mutate(payload)
   }
 
-  return { form, submitted, update, toggleAmenity, reset, handleSubmit }
+  return {
+    form,
+    submitted,
+    submitting: mutation.isPending,
+    error: mutation.error,
+    update,
+    toggleAmenity,
+    reset,
+    handleSubmit,
+  }
 }

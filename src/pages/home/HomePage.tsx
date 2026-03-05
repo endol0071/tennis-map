@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Filter } from 'lucide-react'
 import { Button } from '../../components/ui/button'
-import { COURTS } from './data/courts'
 import type { Filters } from './hooks/useFilteredCourts'
 import { useFilteredCourts } from './hooks/useFilteredCourts'
 import { CourtCard } from './components/CourtCard'
 import { EmptyState } from './components/EmptyState'
 import { FilterChips } from './components/FilterChips'
 import { FilterModal } from './components/FilterModal'
+import { fetchCourts } from '../../lib/api'
 
 const defaultFilters: Filters = {
   search: '',
@@ -21,21 +22,26 @@ const defaultFilters: Filters = {
 function HomePage() {
   const [filters, setFilters] = useState<Filters>(defaultFilters)
   const [open, setOpen] = useState(false)
-  const { filtered } = useFilteredCourts(COURTS, filters)
+  const { data: courts = [], isLoading, isError } = useQuery({
+    queryKey: ['courts'],
+    queryFn: fetchCourts,
+  })
+
+  const { filtered } = useFilteredCourts(courts, filters)
 
   const sidoOptions = useMemo(
-    () => Array.from(new Set(COURTS.map((court) => court.regionSido))),
-    [],
+    () => Array.from(new Set(courts.map((court) => court.regionSido))),
+    [courts],
   )
 
   const sigunguOptions = useMemo(() => {
     if (!filters.regionSido) return []
     return Array.from(
       new Set(
-        COURTS.filter((court) => court.regionSido === filters.regionSido).map((court) => court.regionSigungu),
+        courts.filter((court) => court.regionSido === filters.regionSido).map((court) => court.regionSigungu),
       ),
     )
-  }, [filters.regionSido])
+  }, [courts, filters.regionSido])
 
   const handleChange = (updates: Partial<Filters>) => {
     setFilters((prev) => ({ ...prev, ...updates }))
@@ -60,9 +66,28 @@ function HomePage() {
 
       <FilterChips filters={filters} onOpen={() => setOpen(true)} />
 
-      {filtered.length === 0 ? (
+      {isLoading && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div
+              key={idx}
+              className="h-60 animate-pulse rounded-2xl border border-slate-200 bg-slate-50 shadow-inner"
+            />
+          ))}
+        </div>
+      )}
+
+      {isError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+        </div>
+      )}
+
+      {!isLoading && !isError && filtered.length === 0 ? (
         <EmptyState onReset={() => setFilters(defaultFilters)} />
-      ) : (
+      ) : null}
+
+      {!isLoading && !isError && filtered.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2">
           {filtered.map((court) => (
             <CourtCard key={court.id} court={court} />

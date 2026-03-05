@@ -42,4 +42,30 @@ export interface Submission {
   reservationType: ReservationType
   submittedAt: string
   note?: string
+  reservationUrl?: string
+  phone?: string
+  priceNote?: string
+  courtsIndoor?: number
+  courtsOutdoor?: number
+  surface?: string
+  amenities?: Amenity[]
+  naverMapUrl?: string
+}
+
+export interface SubmissionPayload {
+  name: string
+  addressRoad: string
+  regionSido: string
+  regionSigungu: string
+  submitter?: string
+  reservationType: ReservationType
+  note?: string
+  reservationUrl?: string
+  phone?: string
+  priceNote?: string
+  courtsIndoor?: number
+  courtsOutdoor?: number
+  surface?: string
+  amenities?: Amenity[]
+  naverMapUrl?: string
 }

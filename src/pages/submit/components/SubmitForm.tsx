@@ -4,6 +4,8 @@ import type { FormState } from '../hooks/useSubmitForm'
 interface Props {
   form: FormState
   submitted: boolean
+  submitting: boolean
+  errorMessage?: string
   onChange: <K extends keyof FormState>(key: K, value: FormState[K]) => void
   onToggleAmenity: (amenity: FormState['amenities'][number]) => void
   onReset: () => void
@@ -19,12 +21,26 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-export function SubmitForm({ form, submitted, onChange, onToggleAmenity, onReset, onSubmit }: Props) {
+export function SubmitForm({
+  form,
+  submitted,
+  submitting,
+  errorMessage,
+  onChange,
+  onToggleAmenity,
+  onReset,
+  onSubmit,
+}: Props) {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       {submitted && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          제보가 제출된 것으로 가정합니다. 실제 연동 시 API 호출 및 검수 대기 상태로 전환하면 됩니다.
+          제보가 접수되었습니다. 관리 대시보드의 대기 목록으로 추가되었습니다.
+        </div>
+      )}
+      {errorMessage && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          제출 중 오류가 발생했습니다: {errorMessage}
         </div>
       )}
 
@@ -100,21 +116,25 @@ export function SubmitForm({ form, submitted, onChange, onToggleAmenity, onReset
           <div>
             <label className="text-xs uppercase tracking-[0.15em] text-slate-500">실내 코트 수</label>
             <input
-              type="number"
-              min={0}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={form.courtsIndoor}
-              onChange={(e) => onChange('courtsIndoor', Number(e.target.value))}
+              onChange={(e) => onChange('courtsIndoor', e.target.value)}
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-200"
+              placeholder="숫자만 입력"
             />
           </div>
           <div>
             <label className="text-xs uppercase tracking-[0.15em] text-slate-500">야외 코트 수</label>
             <input
-              type="number"
-              min={0}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={form.courtsOutdoor}
-              onChange={(e) => onChange('courtsOutdoor', Number(e.target.value))}
+              onChange={(e) => onChange('courtsOutdoor', e.target.value)}
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-200"
+              placeholder="숫자만 입력"
             />
           </div>
           <div>
@@ -217,9 +237,10 @@ export function SubmitForm({ form, submitted, onChange, onToggleAmenity, onReset
       <div className="flex gap-3">
         <button
           type="submit"
-          className="rounded-full bg-emerald-500 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-200 transition hover:brightness-110"
+          disabled={submitting}
+          className="rounded-full bg-emerald-500 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-200 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          제보 제출 (UI만)
+          {submitting ? '제출 중...' : '제보 제출'}
         </button>
         <button
           type="button"

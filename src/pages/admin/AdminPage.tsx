@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { SUBMISSIONS } from './data/submissions'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchSubmissions, updateSubmissionStatus } from '../../lib/api'
 import { SubmissionRow } from './components/SubmissionRow'
 import type { Submission } from './types'
 
@@ -12,10 +13,30 @@ const filterButtons: { key: 'all' | Submission['status']; label: string }[] = [
 
 function AdminPage() {
   const [status, setStatus] = useState<'all' | Submission['status']>('all')
+  const queryClient = useQueryClient()
+  const { data: submissions = [], isLoading, isError } = useQuery({
+    queryKey: ['submissions'],
+    queryFn: fetchSubmissions,
+  })
+
+  const mutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: Submission['status'] }) =>
+      updateSubmissionStatus(id, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['submissions'] })
+      queryClient.invalidateQueries({ queryKey: ['courts'] })
+    },
+  })
+
+  const handleUpdateStatus = (id: string, nextStatus: Submission['status']) => {
+    mutation.mutate({ id, status: nextStatus })
+  }
+
+  const updatingId = mutation.variables?.id
 
   const filtered = useMemo(
-    () => (status === 'all' ? SUBMISSIONS : SUBMISSIONS.filter((item) => item.status === status)),
-    [status],
+    () => (status === 'all' ? submissions : submissions.filter((item) => item.status === status)),
+    [status, submissions],
   )
 
   return (
@@ -47,11 +68,32 @@ function AdminPage() {
         </span>
       </div>
 
-      <div className="space-y-3">
-        {filtered.map((item) => (
-          <SubmissionRow key={item.id} submission={item} />
-        ))}
-      </div>
+      {isLoading && (
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={idx} className="h-20 animate-pulse rounded-xl bg-slate-50" />
+          ))}
+        </div>
+      )}
+
+      {isError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          제보 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+        </div>
+      )}
+
+      {!isLoading && !isError && (
+        <div className="space-y-3">
+          {filtered.map((item) => (
+            <SubmissionRow
+              key={item.id}
+              submission={item}
+              onChangeStatus={handleUpdateStatus}
+              updating={mutation.isPending && updatingId === item.id}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

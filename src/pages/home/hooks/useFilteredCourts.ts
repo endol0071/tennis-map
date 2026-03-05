@@ -46,7 +46,8 @@ export function useFilteredCourts(courts: Court[], filters: Filters) {
     }
 
     if (filters.amenity !== 'all') {
-      list = list.filter((court) => court.amenities.includes(filters.amenity))
+      const amenity = filters.amenity
+      list = list.filter((court) => court.amenities.includes(amenity))
     }
 
     switch (filters.sort) {

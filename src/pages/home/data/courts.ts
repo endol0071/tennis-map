@@ -81,7 +81,7 @@ export const COURTS: Court[] = [
     courtSurface: '하드',
     isIndoorAvailable: false,
     isOutdoorAvailable: true,
-    priceType: 'public',
+    priceType: 'hourly',
     priceMin: 6000,
     priceMax: 8000,
     reservationType: 'lottery',

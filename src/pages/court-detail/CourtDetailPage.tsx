@@ -1,7 +1,9 @@
 import { Link, useParams } from 'react-router-dom'
-import { COURT_DETAIL_DATA } from './data/courts'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type { Court } from '../../types/domain'
 import { AmenityPill } from './components/AmenityPill'
 import { InfoRow } from './components/InfoRow'
+import { fetchCourt } from '../../lib/api'
 
 const reservationLabel: Record<string, string> = {
   public: '공공예약',
@@ -13,7 +15,33 @@ const reservationLabel: Record<string, string> = {
 
 function CourtDetailPage() {
   const { id } = useParams()
-  const court = COURT_DETAIL_DATA.find((item) => item.id === id)
+  const queryClient = useQueryClient()
+
+  const {
+    data: court,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['court', id],
+    queryFn: () => fetchCourt(id ?? ''),
+    enabled: Boolean(id),
+    initialData: () => {
+      const list = queryClient.getQueryData<Court[]>(['courts'])
+      return list?.find((item) => item.id === id)
+    },
+  })
+
+  if (isLoading) {
+    return <div className="h-64 animate-pulse rounded-2xl border border-slate-200 bg-slate-50" />
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-8 py-12 text-center text-rose-800 shadow-md">
+        코트 상세 정보를 불러오지 못했습니다. 다시 시도해주세요.
+      </div>
+    )
+  }
 
   if (!court) {
     return (

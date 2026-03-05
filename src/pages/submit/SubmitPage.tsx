@@ -2,7 +2,7 @@ import { SubmitForm } from './components/SubmitForm'
 import { useSubmitForm } from './hooks/useSubmitForm'
 
 function SubmitPage() {
-  const { form, submitted, update, toggleAmenity, reset, handleSubmit } = useSubmitForm()
+  const { form, submitted, submitting, error, update, toggleAmenity, reset, handleSubmit } = useSubmitForm()
 
   return (
     <div className="space-y-8 pb-16">
@@ -18,6 +18,8 @@ function SubmitPage() {
       <SubmitForm
         form={form}
         submitted={submitted}
+        submitting={submitting}
+        errorMessage={error ? (error as Error).message : ''}
         onChange={update}
         onToggleAmenity={toggleAmenity}
         onReset={reset}
