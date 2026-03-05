@@ -59,9 +59,11 @@ function HomePage() {
           placeholder="테니스장명, 지역, 주소 검색"
           className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 ring-1 ring-emerald-50 focus:border-emerald-300 focus:outline-none focus:ring-emerald-200"
         />
-        <Button variant="default" size="lg" onClick={() => setOpen(true)} aria-label="필터 열기" className="shrink-0">
-          <Filter className="h-5 w-5" />
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="secondary" size="icon" onClick={() => setOpen(true)} aria-label="필터 열기">
+            <Filter className="h-5 w-5" />
+          </Button>
+        </div>
       </div>
 
       <FilterChips filters={filters} onOpen={() => setOpen(true)} />
