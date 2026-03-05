@@ -1,8 +1,12 @@
 import { SubmitForm } from './components/SubmitForm'
 import { useSubmitForm } from './hooks/useSubmitForm'
+import { useNavigate } from 'react-router-dom'
 
 function SubmitPage() {
-  const { form, submitted, submitting, error, update, toggleAmenity, reset, handleSubmit } = useSubmitForm()
+  const navigate = useNavigate()
+  const { form, submitted, submitting, error, update, toggleAmenity, reset, handleSubmit } = useSubmitForm({
+    onSuccess: () => navigate('/'),
+  })
 
   return (
     <div className="space-y-8 pb-16">

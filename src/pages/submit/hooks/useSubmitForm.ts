@@ -46,7 +46,11 @@ const initialState: FormState = {
   note: '',
 }
 
-export function useSubmitForm() {
+interface UseSubmitFormOptions {
+  onSuccess?: () => void
+}
+
+export function useSubmitForm(options: UseSubmitFormOptions = {}) {
   const [form, setForm] = useState<FormState>(initialState)
   const [submitted, setSubmitted] = useState(false)
   const queryClient = useQueryClient()
@@ -57,6 +61,7 @@ export function useSubmitForm() {
       setSubmitted(true)
       setForm(initialState)
       queryClient.invalidateQueries({ queryKey: ['submissions'] })
+      options.onSuccess?.()
     },
   })
 
