@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchSubmissions, updateSubmissionStatus } from '../../lib/api'
 import { SubmissionRow } from './components/SubmissionRow'
+import { SubmissionDetailModal } from './components/SubmissionDetailModal'
 import type { Submission } from './types'
 
 const filterButtons: { key: 'all' | Submission['status']; label: string }[] = [
@@ -13,6 +14,7 @@ const filterButtons: { key: 'all' | Submission['status']; label: string }[] = [
 
 function AdminPage() {
   const [status, setStatus] = useState<'all' | Submission['status']>('all')
+  const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const { data: submissions = [], isLoading, isError } = useQuery({
     queryKey: ['submissions'],
@@ -29,7 +31,14 @@ function AdminPage() {
   })
 
   const handleUpdateStatus = (id: string, nextStatus: Submission['status']) => {
-    mutation.mutate({ id, status: nextStatus })
+    mutation.mutate(
+      { id, status: nextStatus },
+      {
+        onSuccess: () => {
+          setSelectedSubmissionId(null)
+        },
+      },
+    )
   }
 
   const updatingId = mutation.variables?.id
@@ -37,6 +46,10 @@ function AdminPage() {
   const filtered = useMemo(
     () => (status === 'all' ? submissions : submissions.filter((item) => item.status === status)),
     [status, submissions],
+  )
+  const selectedSubmission = useMemo(
+    () => submissions.find((item) => item.id === selectedSubmissionId) ?? null,
+    [submissions, selectedSubmissionId],
   )
 
   return (
@@ -85,15 +98,22 @@ function AdminPage() {
       {!isLoading && !isError && (
         <div className="space-y-3">
           {filtered.map((item) => (
-            <SubmissionRow
-              key={item.id}
-              submission={item}
-              onChangeStatus={handleUpdateStatus}
-              updating={mutation.isPending && updatingId === item.id}
-            />
+            <SubmissionRow key={item.id} submission={item} onSelect={setSelectedSubmissionId} />
           ))}
         </div>
       )}
+
+      <SubmissionDetailModal
+        submission={selectedSubmission}
+        open={selectedSubmission !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedSubmissionId(null)
+          }
+        }}
+        onChangeStatus={handleUpdateStatus}
+        updating={mutation.isPending && updatingId === selectedSubmission?.id}
+      />
     </div>
   )
 }
