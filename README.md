@@ -2,11 +2,15 @@
 
 ## Environment Variables
 
-Frontend API requests use `VITE_API_BASE_URL`.
+Frontend API requests can use `VITE_API_BASE_URL`.
 
 ```bash
 VITE_API_BASE_URL=http://localhost:3000
 ```
+
+Default behavior:
+- Development (`import.meta.env.PROD === false`): `http://localhost:3000`
+- Production (`import.meta.env.PROD === true`): `https://tennis-map-server-production.up.railway.app`
 
 Use `.env.example` as the template for local env files.
 

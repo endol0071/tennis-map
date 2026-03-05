@@ -1,6 +1,11 @@
 import type { Court, Submission, SubmissionPayload } from '../types/domain';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+const PRODUCTION_API_BASE_URL = 'https://tennis-map-server-production.up.railway.app';
+const DEFAULT_API_BASE_URL = import.meta.env.PROD
+  ? PRODUCTION_API_BASE_URL
+  : 'http://localhost:3000';
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, '');
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
