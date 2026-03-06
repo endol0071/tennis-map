@@ -1,49 +1,61 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { createSubmission } from '../../../lib/api'
-import type { Amenity, SubmissionPayload } from '../../../types/domain'
+import type { AmenityCode, CourtLayout, CreateSubmissionBody } from '../../../types/domain'
 
-type FormOverrides =
-  | 'courtsIndoor'
-  | 'courtsOutdoor'
-  | 'surface'
-  | 'phone'
-  | 'reservationUrl'
-  | 'amenities'
-  | 'naverMapUrl'
-  | 'submitter'
-  | 'note'
-  | 'priceNote'
-
-export type FormState = Omit<SubmissionPayload, FormOverrides> & {
-  courtsIndoor: string
-  courtsOutdoor: string
+export interface DraftCourtLayout {
+  space: CourtLayout['space']
+  count: string
   surface: string
+  dayType: NonNullable<CourtLayout['dayType']>
+  price: string
+  note: string
+}
+
+export interface FormState {
+  name: string
+  naverMapUrl: string
   phone: string
-  priceNote: string
+  location: string
+  submitter: string
+  reservationMethod: string
   note: string
   reservationUrl: string
-  amenities: Amenity[]
-  naverMapUrl: string
-  submitter: string
+  amenities: AmenityCode[]
+  courtLayouts: CourtLayout[]
 }
 
 const initialState: FormState = {
   name: '',
-  addressRoad: '',
-  regionSido: '',
-  regionSigungu: '',
-  courtsIndoor: '',
-  courtsOutdoor: '',
-  surface: '',
-  phone: '',
-  reservationType: 'public',
-  reservationUrl: '',
-  priceNote: '',
-  amenities: [],
   naverMapUrl: '',
+  phone: '',
+  location: '',
   submitter: '',
+  reservationMethod: '',
   note: '',
+  reservationUrl: '',
+  amenities: [],
+  courtLayouts: [],
+}
+
+const initialDraftCourtLayout: DraftCourtLayout = {
+  space: 'indoor',
+  count: '',
+  surface: '',
+  dayType: 'all',
+  price: '',
+  note: '',
+}
+
+function toOptionalNumber(value: string) {
+  if (value.trim() === '') return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function toOptionalText(value: string) {
+  const trimmed = value.trim()
+  return trimmed === '' ? undefined : trimmed
 }
 
 interface UseSubmitFormOptions {
@@ -52,6 +64,9 @@ interface UseSubmitFormOptions {
 
 export function useSubmitForm(options: UseSubmitFormOptions = {}) {
   const [form, setForm] = useState<FormState>(initialState)
+  const [isDraftCourtLayoutOpen, setIsDraftCourtLayoutOpen] = useState(false)
+  const [draftCourtLayout, setDraftCourtLayout] = useState<DraftCourtLayout>(initialDraftCourtLayout)
+  const [courtLayoutError, setCourtLayoutError] = useState<string>('')
   const [submitted, setSubmitted] = useState(false)
   const queryClient = useQueryClient()
 
@@ -60,6 +75,9 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
     onSuccess: () => {
       setSubmitted(true)
       setForm(initialState)
+      setIsDraftCourtLayoutOpen(false)
+      setDraftCourtLayout(initialDraftCourtLayout)
+      setCourtLayoutError('')
       queryClient.invalidateQueries({ queryKey: ['submissions'] })
       options.onSuccess?.()
     },
@@ -70,7 +88,7 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const toggleAmenity = (amenity: Amenity) => {
+  const toggleAmenity = (amenity: AmenityCode) => {
     setForm((prev) => {
       const exists = prev.amenities.includes(amenity)
       const amenities = exists ? prev.amenities.filter((a) => a !== amenity) : [...prev.amenities, amenity]
@@ -78,18 +96,102 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
     })
   }
 
+  const updateDraftCourtLayout = <K extends keyof DraftCourtLayout>(key: K, value: DraftCourtLayout[K]) => {
+    setSubmitted(false)
+    setCourtLayoutError('')
+    setDraftCourtLayout((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const openDraftCourtLayout = () => {
+    setSubmitted(false)
+    setCourtLayoutError('')
+    setIsDraftCourtLayoutOpen(true)
+  }
+
+  const cancelDraftCourtLayout = () => {
+    setCourtLayoutError('')
+    setDraftCourtLayout(initialDraftCourtLayout)
+    setIsDraftCourtLayoutOpen(false)
+  }
+
+  const confirmCourtLayout = () => {
+    const count = toOptionalNumber(draftCourtLayout.count)
+    if (!count || count <= 0) {
+      setCourtLayoutError('면수는 1 이상 숫자로 입력해 주세요.')
+      return
+    }
+
+    const surface = draftCourtLayout.surface.trim()
+    if (!surface) {
+      setCourtLayoutError('바닥재를 선택해 주세요.')
+      return
+    }
+
+    const hasPriceInput = draftCourtLayout.price.trim() !== ''
+    const price = toOptionalNumber(draftCourtLayout.price)
+    if (hasPriceInput && (!price || price <= 0)) {
+      setCourtLayoutError('금액은 1원 이상 숫자로 입력해 주세요.')
+      return
+    }
+
+    const nextCourtLayout: CourtLayout = {
+      space: draftCourtLayout.space,
+      count,
+      surface,
+    }
+
+    if (price && price > 0) {
+      nextCourtLayout.dayType = draftCourtLayout.dayType
+      nextCourtLayout.price = price
+    }
+
+    const note = toOptionalText(draftCourtLayout.note)
+    if (note) {
+      nextCourtLayout.note = note
+    }
+
+    setSubmitted(false)
+    setCourtLayoutError('')
+    setForm((prev) => ({
+      ...prev,
+      courtLayouts: [...prev.courtLayouts, nextCourtLayout],
+    }))
+    setDraftCourtLayout(initialDraftCourtLayout)
+    setIsDraftCourtLayoutOpen(false)
+  }
+
+  const removeCourtLayout = (index: number) => {
+    setSubmitted(false)
+    setForm((prev) => ({
+      ...prev,
+      courtLayouts: prev.courtLayouts.filter((_, idx) => idx !== index),
+    }))
+  }
+
   const reset = () => {
     setForm(initialState)
+    setIsDraftCourtLayoutOpen(false)
+    setDraftCourtLayout(initialDraftCourtLayout)
+    setCourtLayoutError('')
     setSubmitted(false)
     mutation.reset()
   }
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const payload: SubmissionPayload = {
-      ...form,
-      courtsIndoor: form.courtsIndoor === '' ? undefined : Number(form.courtsIndoor),
-      courtsOutdoor: form.courtsOutdoor === '' ? undefined : Number(form.courtsOutdoor),
+    setCourtLayoutError('')
+
+    const payload: CreateSubmissionBody = {
+      name: form.name.trim(),
+      naverMapUrl: form.naverMapUrl.trim(),
+      phone: form.phone.trim(),
+      location: toOptionalText(form.location),
+      submitter: toOptionalText(form.submitter),
+      reservationMethod: toOptionalText(form.reservationMethod),
+      note: toOptionalText(form.note),
+      reservationUrl: toOptionalText(form.reservationUrl),
+      courtLayouts: form.courtLayouts.length ? form.courtLayouts : undefined,
+      amenities: form.amenities.length ? form.amenities : undefined,
     }
     mutation.mutate(payload)
   }
@@ -101,6 +203,14 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
     error: mutation.error,
     update,
     toggleAmenity,
+    isDraftCourtLayoutOpen,
+    draftCourtLayout,
+    courtLayoutError,
+    openDraftCourtLayout,
+    cancelDraftCourtLayout,
+    updateDraftCourtLayout,
+    confirmCourtLayout,
+    removeCourtLayout,
     reset,
     handleSubmit,
   }

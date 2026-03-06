@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchSubmissions, updateSubmissionStatus } from '../../lib/api'
+import { useNavigate } from 'react-router-dom'
+import { deleteCourt, fetchCourts, fetchSubmissions, updateCourt, updateSubmissionStatus } from '../../lib/api'
 import { SubmissionRow } from './components/SubmissionRow'
 import { SubmissionDetailModal } from './components/SubmissionDetailModal'
 import type { Submission } from './types'
+import type { UpdateCourtBody } from '../../types/domain'
 
 const filterButtons: { key: 'all' | Submission['status']; label: string }[] = [
   { key: 'all', label: '전체' },
@@ -12,16 +14,29 @@ const filterButtons: { key: 'all' | Submission['status']; label: string }[] = [
   { key: 'rejected', label: '반려' },
 ]
 
+const toCourtSlug = (text: string) =>
+  text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\uAC00-\uD7A3\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+
 function AdminPage() {
+  const navigate = useNavigate()
   const [status, setStatus] = useState<'all' | Submission['status']>('all')
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const { data: submissions = [], isLoading, isError } = useQuery({
-    queryKey: ['submissions'],
-    queryFn: fetchSubmissions,
+    queryKey: ['submissions', status],
+    queryFn: () => fetchSubmissions({ status: status === 'all' ? undefined : status, limit: 200 }),
+  })
+  const { data: courts = [] } = useQuery({
+    queryKey: ['courts', 'admin'],
+    queryFn: () => fetchCourts({ limit: 500 }),
   })
 
-  const mutation = useMutation({
+  const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: Submission['status'] }) =>
       updateSubmissionStatus(id, status),
     onSuccess: () => {
@@ -30,37 +45,135 @@ function AdminPage() {
     },
   })
 
-  const handleUpdateStatus = (id: string, nextStatus: Submission['status']) => {
-    mutation.mutate(
-      { id, status: nextStatus },
-      {
-        onSuccess: () => {
-          setSelectedSubmissionId(null)
-        },
-      },
-    )
+  const courtUpdateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: UpdateCourtBody }) => updateCourt(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['submissions'] })
+      queryClient.invalidateQueries({ queryKey: ['courts'] })
+    },
+  })
+
+  const courtDeleteMutation = useMutation({
+    mutationFn: (id: string) => deleteCourt(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['submissions'] })
+      queryClient.invalidateQueries({ queryKey: ['courts'] })
+    },
+  })
+
+  const handleUpdateStatus = async (id: string, nextStatus: Submission['status']) => {
+    await statusMutation.mutateAsync({ id, status: nextStatus })
   }
 
-  const updatingId = mutation.variables?.id
+  const handleSaveCourt = async (id: string, payload: UpdateCourtBody) => {
+    await courtUpdateMutation.mutateAsync({ id, payload })
+  }
 
-  const filtered = useMemo(
-    () => (status === 'all' ? submissions : submissions.filter((item) => item.status === status)),
-    [status, submissions],
-  )
+  const handleDeleteCourt = async (id: string) => {
+    await courtDeleteMutation.mutateAsync(id)
+    setSelectedSubmissionId(null)
+  }
+
+  const updatingId = statusMutation.variables?.id
+
+  const filtered = submissions
   const selectedSubmission = useMemo(
     () => submissions.find((item) => item.id === selectedSubmissionId) ?? null,
     [submissions, selectedSubmissionId],
   )
 
+  const selectedCourtId = useMemo(() => {
+    if (!selectedSubmission) return null
+
+    const direct = courts.find((court) => court.id === selectedSubmission.id)
+    if (direct) return direct.id
+
+    const slug = toCourtSlug(selectedSubmission.name)
+    if (slug) {
+      const bySlug = courts.find((court) => court.id === slug)
+      if (bySlug) return bySlug.id
+    }
+
+    const naverMapUrl = selectedSubmission.naverMapUrl?.trim()
+    if (naverMapUrl) {
+      const byMapUrl = courts.filter((court) => court.naverMapUrl?.trim() === naverMapUrl)
+      if (byMapUrl.length === 1) return byMapUrl[0].id
+    }
+
+    const phone = selectedSubmission.phone?.trim()
+    if (phone) {
+      const byPhone = courts.filter((court) => court.phone?.trim() === phone)
+      if (byPhone.length === 1) return byPhone[0].id
+    }
+
+    const strictMatches = courts.filter(
+      (court) =>
+        court.name === selectedSubmission.name &&
+        court.addressRoad === selectedSubmission.addressRoad &&
+        court.regionSido === selectedSubmission.regionSido &&
+        court.regionSigungu === selectedSubmission.regionSigungu,
+    )
+    if (strictMatches.length === 1) return strictMatches[0].id
+
+    const relaxedMatches = courts.filter(
+      (court) =>
+        court.name === selectedSubmission.name &&
+        court.regionSido === selectedSubmission.regionSido &&
+        court.regionSigungu === selectedSubmission.regionSigungu,
+    )
+    if (relaxedMatches.length === 1) return relaxedMatches[0].id
+
+    return null
+  }, [courts, selectedSubmission])
+  const selectedCourt = useMemo(
+    () => (selectedCourtId ? courts.find((court) => court.id === selectedCourtId) ?? null : null),
+    [courts, selectedCourtId],
+  )
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1)
+      return
+    }
+    navigate('/')
+  }
+
   return (
-    <div className="space-y-8 pb-16">
-      <section className="rounded-3xl border border-slate-200 bg-white px-8 py-10 shadow-lg shadow-emerald-50">
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-emerald-600">Admin · 검수</p>
-        <h1 className="mt-3 text-3xl font-bold text-slate-900">제보 검수 대시보드</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-600">
-          실제 운영 시 승인/반려/병합 플로우를 여기에 연결하면 됩니다. 현재는 목데이터와 필터만 동작하는 상태입니다.
-        </p>
-      </section>
+    <div className="space-y-6 pb-16">
+      <header className="-mx-4 -mt-4 border-b border-slate-200 bg-white">
+        <div className="relative flex h-14 items-center px-4">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-lime-400 text-xs font-bold text-slate-900 shadow-sm">
+              TM
+            </div>
+            <p className="text-lg font-bold text-slate-900">테니스맵</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleGoBack}
+            aria-label="뒤로가기"
+            className="relative z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path
+                d="M15 18L9 12L15 6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+      </header>
 
       <div className="flex flex-wrap items-center gap-2">
         {filterButtons.map((btn) => (
@@ -105,14 +218,20 @@ function AdminPage() {
 
       <SubmissionDetailModal
         submission={selectedSubmission}
+        courtId={selectedCourtId}
+        court={selectedCourt}
         open={selectedSubmission !== null}
         onOpenChange={(open) => {
           if (!open) {
             setSelectedSubmissionId(null)
           }
         }}
+        onSaveCourt={handleSaveCourt}
+        onDeleteCourt={handleDeleteCourt}
         onChangeStatus={handleUpdateStatus}
-        updating={mutation.isPending && updatingId === selectedSubmission?.id}
+        updatingStatus={statusMutation.isPending && updatingId === selectedSubmission?.id}
+        savingCourt={courtUpdateMutation.isPending}
+        deletingCourt={courtDeleteMutation.isPending}
       />
     </div>
   )

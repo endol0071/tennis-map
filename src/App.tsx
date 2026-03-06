@@ -2,7 +2,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom'
 
 function App() {
   const { pathname } = useLocation()
-  const showSubmitFab = pathname !== '/submit'
+  const showSubmitFab = pathname === '/'
 
   return (
     <div className="min-h-screen bg-white text-slate-900">

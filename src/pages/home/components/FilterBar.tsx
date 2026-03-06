@@ -1,4 +1,4 @@
-import type { Amenity } from '../types'
+import type { AmenityCode } from '../../../types/domain'
 import type { Filters } from '../hooks/useFilteredCourts'
 
 interface Props {
@@ -32,7 +32,7 @@ export function FilterBar({ filters, onChange, sidoOptions, sigunguOptions }: Pr
     { key: 'courts', label: '코트수 많은순' },
   ]
 
-  const amenityOptions: Amenity[] = ['parking', 'shower', 'lighting', 'locker', 'rental', 'cafeteria']
+  const amenityOptions: AmenityCode[] = ['parking', 'shower', 'lighting', 'locker', 'rental', 'cafeteria']
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-emerald-50">
@@ -125,7 +125,7 @@ export function FilterBar({ filters, onChange, sidoOptions, sigunguOptions }: Pr
           <p className="text-xs uppercase tracking-[0.15em] text-slate-500">편의시설</p>
           <select
             value={filters.amenity}
-            onChange={(e) => onChange({ amenity: e.target.value as Amenity | 'all' })}
+            onChange={(e) => onChange({ amenity: e.target.value as AmenityCode | 'all' })}
             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 ring-1 ring-emerald-50 focus:border-emerald-300 focus:outline-none focus:ring-emerald-200"
           >
             <option value="all">{AMENITY_LABEL.all}</option>

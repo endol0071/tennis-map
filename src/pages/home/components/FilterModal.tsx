@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../../../components/ui/dialog'
 import { Button } from '../../../components/ui/button'
 import { Badge } from '../../../components/ui/badge'
-import type { Amenity } from '../types'
+import type { AmenityCode } from '../../../types/domain'
 import type { Filters } from '../hooks/useFilteredCourts'
 
 interface Props {
@@ -37,7 +37,7 @@ export function FilterModal({ open, onOpenChange, filters, onChange, onReset, si
     { key: 'outdoor', label: '야외' },
   ]
 
-  const amenityOptions: Amenity[] = ['parking', 'shower', 'lighting', 'locker', 'rental', 'cafeteria']
+  const amenityOptions: AmenityCode[] = ['parking', 'shower', 'lighting', 'locker', 'rental', 'cafeteria']
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -1,17 +1,9 @@
 import { Link } from 'react-router-dom'
 import type { Court } from '../types'
+import { formatReservationType } from '../../../lib/reservation'
 
 interface Props {
   court: Court
-}
-
-const AMENITY_LABEL: Record<string, string> = {
-  parking: '주차',
-  shower: '샤워',
-  lighting: '조명',
-  locker: '락커',
-  rental: '대여',
-  cafeteria: '카페',
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
@@ -65,15 +57,7 @@ export function CourtCard({ court }: Props) {
             실내 {court.courtsIndoor} · 야외 {court.courtsOutdoor}
           </span>
           <span className="rounded-lg bg-slate-100 px-3 py-1 ring-1 ring-slate-200">
-            {court.reservationType === 'public'
-              ? '공공예약'
-              : court.reservationType === 'phone'
-              ? '전화 예약'
-              : court.reservationType === 'app'
-              ? '앱 예약'
-              : court.reservationType === 'lottery'
-              ? '추첨'
-              : '현장'}
+            {formatReservationType(court.reservationType)}
           </span>
           {court.priceMin && (
             <span className="rounded-lg bg-slate-100 px-3 py-1 ring-1 ring-slate-200">
@@ -85,10 +69,10 @@ export function CourtCard({ court }: Props) {
         <div className="flex flex-wrap gap-2">
           {court.amenities.slice(0, 4).map((amenity) => (
             <span
-              key={amenity}
+              key={amenity.code}
               className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 ring-1 ring-slate-200"
             >
-              {AMENITY_LABEL[amenity] ?? amenity}
+              {amenity.name}
             </span>
           ))}
           {court.amenities.length > 4 && (

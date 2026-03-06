@@ -1,4 +1,5 @@
 import type { Submission } from '../types'
+import { formatReservationType } from '../../../lib/reservation'
 
 const statusColor: Record<Submission['status'], string> = {
   pending: 'bg-amber-100 text-amber-800 ring-amber-200',
@@ -9,14 +10,6 @@ const statusColor: Record<Submission['status'], string> = {
 interface Props {
   submission: Submission
   onSelect?: (id: string) => void
-}
-
-const reservationLabel: Record<Submission['reservationType'], string> = {
-  public: '공공예약',
-  phone: '전화',
-  app: '앱',
-  onsite: '현장',
-  lottery: '추첨',
 }
 
 export function SubmissionRow({ submission, onSelect }: Props) {
@@ -43,7 +36,7 @@ export function SubmissionRow({ submission, onSelect }: Props) {
           {submission.regionSido} · {submission.regionSigungu}
         </span>
         <span className="rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200">
-          {reservationLabel[submission.reservationType]}
+          {formatReservationType(submission.reservationType)}
         </span>
       </div>
 

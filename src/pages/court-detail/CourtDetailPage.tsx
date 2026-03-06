@@ -1,21 +1,56 @@
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Court } from '../../types/domain'
+import type { Court, PriceDayType } from '../../types/domain'
 import { AmenityPill } from './components/AmenityPill'
 import { InfoRow } from './components/InfoRow'
 import { fetchCourt } from '../../lib/api'
+import { formatReservationType } from '../../lib/reservation'
 
-const reservationLabel: Record<string, string> = {
-  public: '공공예약',
-  phone: '전화',
-  app: '앱',
-  onsite: '현장',
-  lottery: '추첨',
+const dayTypeLabel: Record<PriceDayType, string> = {
+  all: '전체',
+  weekday: '평일',
+  weekend: '주말',
+  holiday: '공휴일',
+}
+
+function formatSpaceLayouts(layouts: NonNullable<Court['courtLayouts']>, space: 'indoor' | 'outdoor') {
+  const filtered = layouts.filter((layout) => layout.space === space)
+  if (!filtered.length) return undefined
+
+  return filtered
+    .map((layout) => {
+      const summary = [`${layout.count}면`, layout.surface]
+      if (layout.price && layout.price > 0) {
+        summary.push(`${dayTypeLabel[layout.dayType ?? 'all']} ${layout.price.toLocaleString()}원`)
+      } else {
+        summary.push('가격 정보 없음')
+      }
+      return summary.join(' · ')
+    })
+    .join(' / ')
+}
+
+function formatSpaceInfo(court: Court, space: 'indoor' | 'outdoor') {
+  const fromLayouts = court.courtLayouts ? formatSpaceLayouts(court.courtLayouts, space) : undefined
+  if (fromLayouts) return fromLayouts
+
+  const count = space === 'indoor' ? court.courtsIndoor : court.courtsOutdoor
+  if (count > 0) return `${count}면 · 바닥재/가격 정보 없음`
+  return '0면'
 }
 
 function CourtDetailPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1)
+      return
+    }
+    navigate('/')
+  }
 
   const {
     data: court,
@@ -59,51 +94,46 @@ function CourtDetailPage() {
   }
 
   const photos = court.images.length ? court.images : ['https://placehold.co/1200x800?text=Tennis+Court']
+  const totalCourts = court.courtsTotal ?? court.courtsIndoor + court.courtsOutdoor
 
   return (
-    <div className="space-y-10 pb-16">
-      <div className="flex flex-col gap-4">
-        <div className="space-y-2">
-          <Link to="/" className="text-xs uppercase tracking-[0.3em] text-emerald-600 hover:text-emerald-700">
-            목록으로
-          </Link>
-          <h1 className="text-3xl font-bold text-slate-900">{court.name}</h1>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
-            <span className="rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200">
-              {court.regionSido} · {court.regionSigungu}
-            </span>
-            <span className="rounded-full bg-emerald-50 px-3 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-200">
-              {reservationLabel[court.reservationType]}
-            </span>
-            {court.courtSurface && (
-              <span className="rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200">{court.courtSurface}</span>
-            )}
+    <div className="space-y-6 pb-16">
+      <header className="-mx-4 -mt-4 border-b border-slate-200 bg-white">
+        <div className="relative flex h-14 items-center px-4">
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-lime-400 text-xs font-bold text-slate-900 shadow-sm">
+              TM
+            </div>
+            <p className="text-lg font-bold text-slate-900">테니스맵</p>
           </div>
-        </div>
 
-        <div className="flex flex-wrap gap-2">
-          {court.naverMapUrl && (
-            <a
-              href={court.naverMapUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 transition hover:border-emerald-400"
+          <button
+            type="button"
+            onClick={handleGoBack}
+            aria-label="뒤로가기"
+            className="relative z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
             >
-              네이버 지도 열기
-            </a>
-          )}
-          {court.phone && (
-            <a
-              href={`tel:${court.phone}`}
-              className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-200 transition hover:brightness-110"
-            >
-              전화 걸기
-            </a>
-          )}
+              <path
+                d="M15 18L9 12L15 6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
         </div>
-      </div>
+      </header>
 
-      <div className="grid gap-4 lg:grid-cols-[2fr,1fr]">
+      <div className="space-y-4">
         <div className="space-y-3">
           <div className="h-60 overflow-hidden rounded-2xl border border-slate-200">
             <img src={photos[0]} alt={court.name} className="h-full w-full object-cover" />
@@ -121,27 +151,20 @@ function CourtDetailPage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-emerald-50 ring-1 ring-emerald-50">
             <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-600">코트 정보</p>
             <div className="mt-3 grid gap-2">
-              <InfoRow label="실내 코트" value={`${court.courtsIndoor}면`} />
-              <InfoRow label="야외 코트" value={`${court.courtsOutdoor}면`} />
-              <InfoRow label="총 코트" value={`${court.courtsTotal ?? court.courtsIndoor + court.courtsOutdoor}면`} />
-              {court.priceType && (
-                <InfoRow
-                  label="가격"
-                  value={
-                    court.priceMin
-                      ? `₩${court.priceMin.toLocaleString()}~${court.priceMax?.toLocaleString() ?? '?'}/${court.priceType}`
-                      : court.priceNote ?? '가격 정보 없음'
-                  }
-                />
-              )}
-              {court.priceNote && <InfoRow label="가격 비고" value={court.priceNote} />}
+              <InfoRow label="코트명" value={court.name} />
+              <InfoRow label="주소" value={court.addressRoad} />
+              <InfoRow label="지역" value={`${court.regionSido} · ${court.regionSigungu}`} />
+              <InfoRow label="실내 코트" value={formatSpaceInfo(court, 'indoor')} />
+              <InfoRow label="야외 코트" value={formatSpaceInfo(court, 'outdoor')} />
+              <InfoRow label="총 코트" value={`${totalCourts}면`} />
+              <InfoRow label="코트 설명" value={court.description ?? '미입력'} />
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-emerald-50 ring-1 ring-emerald-50">
             <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-600">예약 & 연락</p>
             <div className="mt-3 grid gap-2">
-              <InfoRow label="예약 방법" value={reservationLabel[court.reservationType]} />
+              <InfoRow label="예약 방법" value={formatReservationType(court.reservationType)} />
               {court.reservationUrl && (
                 <InfoRow
                   label="예약 링크"
@@ -158,30 +181,37 @@ function CourtDetailPage() {
                 />
               )}
               {court.phone && <InfoRow label="전화" value={court.phone} />}
-              <InfoRow label="주소" value={court.addressRoad} />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-emerald-50 ring-1 ring-emerald-50">
-            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-600">편의시설</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {court.amenities.length ? (
-                court.amenities.map((amenity) => <AmenityPill key={amenity} amenity={amenity} />)
-              ) : (
-                <span className="text-sm text-slate-500">등록된 편의시설 정보가 없습니다.</span>
+              {court.naverMapUrl && (
+                <InfoRow
+                  label="네이버 지도"
+                  value={
+                    <a
+                      href={court.naverMapUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-700 underline underline-offset-2"
+                    >
+                      지도 열기
+                    </a>
+                  }
+                />
               )}
             </div>
           </div>
+
+          {court.amenities.length ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-md shadow-emerald-50 ring-1 ring-emerald-50">
+              <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-600">편의시설</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {court.amenities.map((amenity, index) => (
+                  <AmenityPill key={`${amenity.code}-${index}`} amenity={amenity} />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <div className="rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-green-50 px-8 py-6 text-sm text-slate-700 ring-1 ring-emerald-100">
-        <p className="font-semibold text-emerald-700">정보 기준일 · 운영 메모</p>
-        <p className="mt-2 text-slate-600">
-          가격·예약 방식은 변경될 수 있어요. 최신 정보 제보나 수정 요청은 &quot;등록 제보&quot; 메뉴로 알려주세요.
-          운영자 검수 후 반영됩니다.
-        </p>
-      </div>
     </div>
   )
 }

@@ -1,1 +1,1 @@
-export type { Amenity, ReservationType } from '../../../types/domain'
+export type { Amenity, AmenityCode, CourtLayout, PriceDayType } from '../../../types/domain'

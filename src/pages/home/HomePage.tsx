@@ -24,7 +24,7 @@ function HomePage() {
   const [open, setOpen] = useState(false)
   const { data: courts = [], isLoading, isError } = useQuery({
     queryKey: ['courts'],
-    queryFn: fetchCourts,
+    queryFn: () => fetchCourts({ limit: 300 }),
   })
 
   const { filtered } = useFilteredCourts(courts, filters)

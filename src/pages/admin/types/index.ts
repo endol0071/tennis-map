@@ -1,1 +1,1 @@
-export type { Submission } from '../../../types/domain'
+export type { PriceDayType, Submission } from '../../../types/domain'

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -6,7 +6,39 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../../components/ui/dialog'
+import type { AmenityCode, Court, PriceDayType, UpdateCourtBody } from '../../../types/domain'
 import type { Submission } from '../types'
+import { formatReservationType } from '../../../lib/reservation'
+import { useToast } from '../../../components/ui/toast'
+import {
+  amenityOptions,
+  courtSpaceOptions,
+  priceDayOptions,
+  reservationMethodSuggestions,
+} from '../../submit/data/options'
+
+type EditableLayout = {
+  space: 'indoor' | 'outdoor'
+  count: string
+  surface: string
+  dayType: PriceDayType
+  price: string
+  note: string
+}
+
+type EditForm = {
+  name: string
+  addressRoad: string
+  regionSido: string
+  regionSigungu: string
+  reservationType: string
+  reservationUrl: string
+  phone: string
+  naverMapUrl: string
+  description: string
+  amenities: AmenityCode[]
+  courtLayouts: EditableLayout[]
+}
 
 const statusColor: Record<Submission['status'], string> = {
   pending: 'bg-amber-100 text-amber-900 ring-amber-200',
@@ -18,23 +50,6 @@ const statusLabel: Record<Submission['status'], string> = {
   pending: '대기',
   approved: '승인',
   rejected: '반려',
-}
-
-const reservationLabel: Record<Submission['reservationType'], string> = {
-  public: '공공예약',
-  phone: '전화',
-  app: '앱/플랫폼',
-  onsite: '현장',
-  lottery: '추첨',
-}
-
-const amenityLabel: Record<NonNullable<Submission['amenities']>[number], string> = {
-  parking: '주차',
-  shower: '샤워',
-  lighting: '조명',
-  locker: '락커',
-  rental: '대여',
-  cafeteria: '카페',
 }
 
 interface FieldProps {
@@ -51,38 +66,394 @@ function Field({ label, value }: FieldProps) {
   )
 }
 
-const asText = (value?: string | number | null) => {
-  if (value === undefined || value === null || value === '') {
-    return '없음'
+function toOptionalText(value: string) {
+  const trimmed = value.trim()
+  return trimmed === '' ? undefined : trimmed
+}
+
+function toOptionalNumber(value: string) {
+  if (value.trim() === '') return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function toCourtSlug(text: string) {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\uAC00-\uD7A3\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+}
+
+function resolveCourtId(submission: Submission, matchedCourtId: string | null) {
+  if (matchedCourtId) return matchedCourtId
+  return toCourtSlug(submission.name) || submission.id.toLowerCase()
+}
+
+function buildInitialForm(submission: Submission, court?: Court | null): EditForm {
+  const layoutSource = court?.courtLayouts?.length ? court.courtLayouts : submission.courtLayouts
+  const fromLayouts: EditableLayout[] =
+    layoutSource?.map((layout) => ({
+      space: layout.space,
+      count: String(layout.count),
+      surface: layout.surface,
+      dayType: layout.dayType ?? 'all',
+      price: layout.price ? String(layout.price) : '',
+      note: layout.note ?? '',
+    })) ?? []
+
+  const fallbackLayouts: EditableLayout[] = []
+  const baseIndoorCount = court?.courtsIndoor ?? submission.courtsIndoor
+  const baseOutdoorCount = court?.courtsOutdoor ?? submission.courtsOutdoor
+  if (!fromLayouts.length && baseIndoorCount && baseIndoorCount > 0) {
+    fallbackLayouts.push({
+      space: 'indoor',
+      count: String(baseIndoorCount),
+      surface: court?.courtSurface ?? submission.surface ?? '',
+      dayType: 'all',
+      price: '',
+      note: '',
+    })
   }
-  return String(value)
+  if (!fromLayouts.length && baseOutdoorCount && baseOutdoorCount > 0) {
+    fallbackLayouts.push({
+      space: 'outdoor',
+      count: String(baseOutdoorCount),
+      surface: court?.courtSurface ?? submission.surface ?? '',
+      dayType: 'all',
+      price: '',
+      note: '',
+    })
+  }
+
+  return {
+    name: court?.name ?? submission.name ?? '',
+    addressRoad: court?.addressRoad ?? submission.addressRoad ?? '',
+    regionSido: court?.regionSido ?? submission.regionSido ?? '',
+    regionSigungu: court?.regionSigungu ?? submission.regionSigungu ?? '',
+    reservationType: court?.reservationType ?? submission.reservationType ?? '',
+    reservationUrl: court?.reservationUrl ?? submission.reservationUrl ?? '',
+    phone: court?.phone ?? submission.phone ?? '',
+    naverMapUrl: court?.naverMapUrl ?? submission.naverMapUrl ?? '',
+    description: court?.description ?? submission.note ?? '',
+    amenities: court?.amenities?.map((item) => item.code) ?? submission.amenities?.map((item) => item.code) ?? [],
+    courtLayouts: fromLayouts.length ? fromLayouts : fallbackLayouts,
+  }
 }
 
 interface Props {
   submission: Submission | null
+  courtId: string | null
+  court?: Court | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onChangeStatus: (id: string, status: Submission['status']) => void
-  updating?: boolean
+  onSaveCourt: (id: string, payload: UpdateCourtBody) => Promise<void>
+  onDeleteCourt: (id: string) => Promise<void>
+  onChangeStatus: (id: string, status: Submission['status']) => Promise<void>
+  updatingStatus?: boolean
+  savingCourt?: boolean
+  deletingCourt?: boolean
 }
 
-export function SubmissionDetailModal({ submission, open, onOpenChange, onChangeStatus, updating }: Props) {
-  if (!submission) {
+export function SubmissionDetailModal({
+  submission,
+  courtId,
+  court,
+  open,
+  onOpenChange,
+  onSaveCourt,
+  onDeleteCourt,
+  onChangeStatus,
+  updatingStatus,
+  savingCourt,
+  deletingCourt,
+}: Props) {
+  const [form, setForm] = useState<EditForm | null>(null)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+  const [resolvedCourtId, setResolvedCourtId] = useState<string | null>(null)
+  const activeSubmissionIdRef = useRef<string | null>(null)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    if (!submission) return
+    const isNewSubmission = activeSubmissionIdRef.current !== submission.id
+
+    if (isNewSubmission) {
+      activeSubmissionIdRef.current = submission.id
+      setForm(buildInitialForm(submission, court))
+      setResolvedCourtId(courtId ?? null)
+      setErrorMessage('')
+      setSuccessMessage('')
+      return
+    }
+
+    if (court) {
+      setForm(buildInitialForm(submission, court))
+    }
+    if (courtId) {
+      setResolvedCourtId(courtId)
+    }
+  }, [submission, court, courtId])
+
+  if (!submission || !form) {
     return null
   }
 
-  const amenities =
-    submission.amenities && submission.amenities.length > 0
-      ? submission.amenities.map((item) => amenityLabel[item]).join(', ')
-      : '없음'
+  const isSubmitting = Boolean(updatingStatus || savingCourt || deletingCourt)
+  const matchedCourtId = resolvedCourtId ?? courtId
+  const targetCourtId = matchedCourtId ?? resolveCourtId(submission, courtId)
+  const hasMatchedCourt = matchedCourtId !== null
+  const canMutateCourtNow = hasMatchedCourt || submission.status === 'approved'
 
-  const handleStatusChange = (status: Submission['status']) => {
-    onChangeStatus(submission.id, status)
+  const updateField = <K extends keyof EditForm>(key: K, value: EditForm[K]) => {
+    setErrorMessage('')
+    setSuccessMessage('')
+    setForm((prev) => (prev ? { ...prev, [key]: value } : prev))
+  }
+
+  const updateLayout = <K extends keyof EditableLayout>(index: number, key: K, value: EditableLayout[K]) => {
+    setErrorMessage('')
+    setSuccessMessage('')
+    setForm((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        courtLayouts: prev.courtLayouts.map((layout, idx) =>
+          idx === index ? { ...layout, [key]: value } : layout,
+        ),
+      }
+    })
+  }
+
+  const addLayout = () => {
+    setErrorMessage('')
+    setSuccessMessage('')
+    setForm((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        courtLayouts: [
+          ...prev.courtLayouts,
+          { space: 'indoor', count: '', surface: '', dayType: 'all', price: '', note: '' },
+        ],
+      }
+    })
+  }
+
+  const removeLayout = (index: number) => {
+    setErrorMessage('')
+    setSuccessMessage('')
+    setForm((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        courtLayouts: prev.courtLayouts.filter((_, idx) => idx !== index),
+      }
+    })
+  }
+
+  const toggleAmenity = (amenity: AmenityCode) => {
+    setErrorMessage('')
+    setSuccessMessage('')
+    setForm((prev) => {
+      if (!prev) return prev
+      const exists = prev.amenities.includes(amenity)
+      const amenities = exists ? prev.amenities.filter((item) => item !== amenity) : [...prev.amenities, amenity]
+      return { ...prev, amenities }
+    })
+  }
+
+  const buildPayload = () => {
+    const name = form.name.trim()
+    if (!name) {
+      setErrorMessage('코트명을 입력해 주세요.')
+      return null
+    }
+
+    const addressRoad = form.addressRoad.trim()
+    if (!addressRoad) {
+      setErrorMessage('주소를 입력해 주세요.')
+      return null
+    }
+
+    const regionSido = form.regionSido.trim()
+    const regionSigungu = form.regionSigungu.trim()
+    if (!regionSido || !regionSigungu) {
+      setErrorMessage('지역(시/도, 시/군/구)을 입력해 주세요.')
+      return null
+    }
+
+    if (!form.courtLayouts.length) {
+      setErrorMessage('코트 구성을 최소 1개 등록해 주세요.')
+      return null
+    }
+
+    let indoorTotal = 0
+    let outdoorTotal = 0
+
+    const courtLayouts = form.courtLayouts.reduce<NonNullable<UpdateCourtBody['courtLayouts']>>((acc, layout, index) => {
+      const count = toOptionalNumber(layout.count)
+      if (!count || count <= 0) {
+        setErrorMessage(`${index + 1}번째 코트의 면수는 1 이상 숫자로 입력해 주세요.`)
+        return acc
+      }
+
+      const surface = layout.surface.trim()
+      if (!surface) {
+        setErrorMessage(`${index + 1}번째 코트의 바닥재를 입력해 주세요.`)
+        return acc
+      }
+
+      const hasPriceInput = layout.price.trim() !== ''
+      const price = toOptionalNumber(layout.price)
+      if (hasPriceInput && (!price || price <= 0)) {
+        setErrorMessage(`${index + 1}번째 코트의 금액은 1원 이상 숫자로 입력해 주세요.`)
+        return acc
+      }
+
+      if (layout.space === 'indoor') indoorTotal += count
+      if (layout.space === 'outdoor') outdoorTotal += count
+
+      const nextLayout: NonNullable<UpdateCourtBody['courtLayouts']>[number] = {
+        space: layout.space,
+        count,
+        surface,
+      }
+
+      if (price && price > 0) {
+        nextLayout.dayType = layout.dayType
+        nextLayout.price = price
+      }
+
+      const note = toOptionalText(layout.note)
+      if (note) {
+        nextLayout.note = note
+      }
+
+      acc.push(nextLayout)
+      return acc
+    }, [])
+
+    if (courtLayouts.length !== form.courtLayouts.length) {
+      return null
+    }
+
+    const payload: UpdateCourtBody = {
+      name,
+      addressRoad,
+      regionSido,
+      regionSigungu,
+      courtsIndoor: indoorTotal,
+      courtsOutdoor: outdoorTotal,
+      reservationType: toOptionalText(form.reservationType),
+      reservationUrl: toOptionalText(form.reservationUrl),
+      phone: toOptionalText(form.phone),
+      naverMapUrl: toOptionalText(form.naverMapUrl),
+      description: toOptionalText(form.description),
+      courtLayouts,
+      amenities: form.amenities.length ? form.amenities : undefined,
+    }
+
+    return payload
+  }
+
+  const saveCourt = async () => {
+    if (!matchedCourtId) {
+      setErrorMessage('이 제보는 아직 생성된 코트가 없어 수정 저장할 수 없습니다. 승인 후 코트가 생성되면 수정 가능합니다.')
+      return
+    }
+
+    const payload = buildPayload()
+    if (!payload) return
+
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    try {
+      await onSaveCourt(targetCourtId, payload)
+      setResolvedCourtId(targetCourtId)
+      setSuccessMessage('코트 정보를 저장했습니다.')
+      toast({
+        title: '저장 완료',
+        description: '코트 정보가 저장되었습니다.',
+        variant: 'success',
+      })
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '코트 정보 저장에 실패했습니다.')
+    }
+  }
+
+  const changeStatus = async (status: Submission['status']) => {
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    try {
+      if (status === 'approved') {
+        const payload = buildPayload()
+        if (!payload) return
+
+        if (matchedCourtId) {
+          await onSaveCourt(targetCourtId, payload)
+          setResolvedCourtId(targetCourtId)
+          toast({
+            title: '저장 완료',
+            description: '코트 정보가 저장되었습니다.',
+            variant: 'success',
+          })
+        }
+        await onChangeStatus(submission.id, status)
+        if (!matchedCourtId) {
+          const createdCourtId = resolveCourtId(submission, null)
+          await onSaveCourt(createdCourtId, payload)
+          setResolvedCourtId(createdCourtId)
+          toast({
+            title: '저장 완료',
+            description: '코트 생성 후 정보가 저장되었습니다.',
+            variant: 'success',
+          })
+        }
+        setSuccessMessage('코트 정보 저장 후 승인 완료되었습니다.')
+        return
+      }
+
+      await onChangeStatus(submission.id, status)
+      setSuccessMessage('상태가 변경되었습니다.')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '상태 변경에 실패했습니다.')
+    }
+  }
+
+  const handleDeleteCourt = async () => {
+    if (!matchedCourtId) {
+      setErrorMessage('매칭되는 코트 ID를 찾지 못해 삭제할 수 없습니다.')
+      return
+    }
+
+    const confirmed = window.confirm('코트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')
+    if (!confirmed) return
+
+    setErrorMessage('')
+    setSuccessMessage('')
+    try {
+      await onDeleteCourt(matchedCourtId)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '코트 삭제에 실패했습니다.')
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl space-y-4 overflow-y-auto">
+      <DialogContent
+        className="max-h-[90vh] max-w-3xl space-y-4 overflow-y-auto"
+        onInteractOutside={(event) => {
+          const target = event.target as HTMLElement | null
+          if (target?.closest('[data-toast-root="true"]')) {
+            event.preventDefault()
+          }
+        }}
+      >
         <DialogHeader className="space-y-2 text-left">
           <div className="flex flex-wrap items-center gap-2 pr-8">
             <DialogTitle>{submission.name}</DialogTitle>
@@ -91,110 +462,293 @@ export function SubmissionDetailModal({ submission, open, onOpenChange, onChange
             </span>
           </div>
           <DialogDescription className="leading-relaxed">
-            제보 상세를 확인한 뒤 상태를 변경하세요. 모든 필드는 제보자가 입력한 원본 기준입니다.
+            코트 상세 정보를 먼저 수정 저장하고, 확인 후 승인할 수 있습니다.
           </DialogDescription>
         </DialogHeader>
+
+        {errorMessage && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorMessage}</div>
+        )}
+        {successMessage && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+            {successMessage}
+          </div>
+        )}
 
         <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-600">기본 정보</p>
           <div className="grid gap-3 md:grid-cols-2">
             <Field label="제보 ID" value={submission.id} />
             <Field label="제출일" value={submission.submittedAt} />
-            <Field label="제보자" value={asText(submission.submitter)} />
-            <Field label="주소(도로명)" value={submission.addressRoad} />
-            <Field label="지역" value={`${submission.regionSido} ${submission.regionSigungu}`} />
-            <Field label="네이버 지도 링크" value={
-              submission.naverMapUrl ? (
-                <a
-                  href={submission.naverMapUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="break-all text-emerald-700 underline underline-offset-2"
-                >
-                  {submission.naverMapUrl}
-                </a>
-              ) : (
-                '없음'
-              )
-            } />
+            <Field label="제보자" value={submission.submitter} />
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">코트명</p>
+              <input
+                value={form.name}
+                onChange={(e) => updateField('name', e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+              />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">주소(도로명)</p>
+              <input
+                value={form.addressRoad}
+                onChange={(e) => updateField('addressRoad', e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">시/도</p>
+              <input
+                value={form.regionSido}
+                onChange={(e) => updateField('regionSido', e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">시/군/구</p>
+              <input
+                value={form.regionSigungu}
+                onChange={(e) => updateField('regionSigungu', e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+              />
+            </div>
           </div>
         </section>
 
         <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-600">코트 및 예약 정보</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-600">코트 상세</p>
+
+          <div className="space-y-2">
+            {form.courtLayouts.map((layout, index) => (
+              <div key={index} className="space-y-2 rounded-lg bg-white px-3 py-3 ring-1 ring-slate-200">
+                <div className="grid gap-2 md:grid-cols-6">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">코트 종류</p>
+                    <select
+                      value={layout.space}
+                      onChange={(e) => updateLayout(index, 'space', e.target.value as EditableLayout['space'])}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+                    >
+                      {courtSpaceOptions.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">면수</p>
+                    <input
+                      value={layout.count}
+                      onChange={(e) => updateLayout(index, 'count', e.target.value)}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">바닥재</p>
+                    <input
+                      value={layout.surface}
+                      onChange={(e) => updateLayout(index, 'surface', e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">요일 구분</p>
+                    <select
+                      value={layout.dayType}
+                      onChange={(e) => updateLayout(index, 'dayType', e.target.value as PriceDayType)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+                    >
+                      {priceDayOptions.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">금액</p>
+                    <input
+                      value={layout.price}
+                      onChange={(e) => updateLayout(index, 'price', e.target.value)}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => removeLayout(index)}
+                      className="w-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700"
+                    >
+                      항목 삭제
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">비고</p>
+                  <input
+                    value={layout.note}
+                    onChange={(e) => updateLayout(index, 'note', e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={addLayout}
+            className="rounded-full border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700"
+          >
+            코트 항목 추가
+          </button>
+        </section>
+
+        <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-600">예약/연락/편의시설</p>
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="실내 코트 수" value={asText(submission.courtsIndoor)} />
-            <Field label="야외 코트 수" value={asText(submission.courtsOutdoor)} />
-            <Field label="바닥재" value={asText(submission.surface)} />
-            <Field label="편의시설" value={amenities} />
-            <Field label="예약 방법" value={reservationLabel[submission.reservationType]} />
-            <Field
-              label="예약 링크"
-              value={
-                submission.reservationUrl ? (
-                  <a
-                    href={submission.reservationUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="break-all text-emerald-700 underline underline-offset-2"
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">예약 방법</p>
+              <input
+                value={form.reservationType}
+                onChange={(e) => updateField('reservationType', e.target.value)}
+                list="admin-reservation-type-suggestions"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+                placeholder={formatReservationType(submission.reservationType)}
+              />
+              <datalist id="admin-reservation-type-suggestions">
+                {reservationMethodSuggestions.map((item) => (
+                  <option key={item} value={item} />
+                ))}
+              </datalist>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">예약 링크</p>
+              <input
+                value={form.reservationUrl}
+                onChange={(e) => updateField('reservationUrl', e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">전화번호</p>
+              <input
+                value={form.phone}
+                onChange={(e) => updateField('phone', e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">네이버 지도 링크</p>
+              <input
+                value={form.naverMapUrl}
+                onChange={(e) => updateField('naverMapUrl', e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">편의시설</p>
+            <div className="flex flex-wrap gap-2">
+              {amenityOptions.map((amenity) => {
+                const active = form.amenities.includes(amenity.code)
+                return (
+                  <button
+                    key={amenity.code}
+                    type="button"
+                    onClick={() => toggleAmenity(amenity.code)}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${
+                      active
+                        ? 'bg-emerald-500 text-white ring-emerald-300'
+                        : 'bg-slate-100 text-slate-700 ring-slate-200'
+                    }`}
                   >
-                    {submission.reservationUrl}
-                  </a>
-                ) : (
-                  '없음'
+                    {amenity.name}
+                  </button>
                 )
-              }
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">코트 설명</p>
+            <textarea
+              value={form.description}
+              onChange={(e) => updateField('description', e.target.value)}
+              rows={3}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
             />
-            <Field label="전화번호" value={asText(submission.phone)} />
-            <Field label="가격/비고" value={asText(submission.priceNote)} />
           </div>
         </section>
 
-        <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-600">추가 메모</p>
-          <p className="rounded-xl bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200">
-            {asText(submission.note)}
-          </p>
-        </section>
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          {!canMutateCourtNow && <p className="text-xs text-slate-500">매칭된 코트가 없으면 저장이 실패할 수 있습니다.</p>}
+          <button
+            type="button"
+            onClick={handleDeleteCourt}
+            disabled={isSubmitting || !canMutateCourtNow}
+            className={`rounded-full border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 ${
+              isSubmitting || !canMutateCourtNow ? 'cursor-not-allowed opacity-60' : ''
+            }`}
+          >
+            {deletingCourt ? '삭제 중...' : '코트 삭제'}
+          </button>
 
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <button
-            type="button"
-            disabled={updating || submission.status === 'approved'}
-            onClick={() => handleStatusChange('approved')}
-            className={`rounded-full px-4 py-2 text-sm font-semibold ring-1 transition ${
-              submission.status === 'approved'
-                ? 'bg-emerald-500 text-white ring-emerald-300'
-                : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-slate-200'
-            } ${updating ? 'cursor-not-allowed opacity-60' : ''}`}
-          >
-            승인
-          </button>
-          <button
-            type="button"
-            disabled={updating || submission.status === 'pending'}
-            onClick={() => handleStatusChange('pending')}
-            className={`rounded-full px-4 py-2 text-sm font-semibold ring-1 transition ${
-              submission.status === 'pending'
-                ? 'bg-amber-100 text-amber-900 ring-amber-200'
-                : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-slate-200'
-            } ${updating ? 'cursor-not-allowed opacity-60' : ''}`}
-          >
-            대기
-          </button>
-          <button
-            type="button"
-            disabled={updating || submission.status === 'rejected'}
-            onClick={() => handleStatusChange('rejected')}
-            className={`rounded-full px-4 py-2 text-sm font-semibold ring-1 transition ${
-              submission.status === 'rejected'
-                ? 'bg-rose-100 text-rose-800 ring-rose-200'
-                : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-slate-200'
-            } ${updating ? 'cursor-not-allowed opacity-60' : ''}`}
-          >
-            반려
-          </button>
-          {updating && <span className="text-xs text-slate-500">저장 중...</span>}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={saveCourt}
+              disabled={isSubmitting}
+              className={`rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-white ${
+                isSubmitting ? 'cursor-not-allowed opacity-60' : ''
+              }`}
+            >
+              {savingCourt ? '저장 중...' : '수정 저장'}
+            </button>
+            <button
+              type="button"
+              disabled={isSubmitting || submission.status === 'approved'}
+              onClick={() => changeStatus('approved')}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ring-1 transition ${
+                submission.status === 'approved'
+                  ? 'bg-emerald-500 text-white ring-emerald-300'
+                  : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-slate-200'
+              } ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+            >
+              {updatingStatus ? '처리 중...' : '승인'}
+            </button>
+            <button
+              type="button"
+              disabled={isSubmitting || submission.status === 'pending'}
+              onClick={() => changeStatus('pending')}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ring-1 transition ${
+                submission.status === 'pending'
+                  ? 'bg-amber-100 text-amber-900 ring-amber-200'
+                  : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-slate-200'
+              } ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+            >
+              {updatingStatus ? '처리 중...' : '대기'}
+            </button>
+            <button
+              type="button"
+              disabled={isSubmitting || submission.status === 'rejected'}
+              onClick={() => changeStatus('rejected')}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ring-1 transition ${
+                submission.status === 'rejected'
+                  ? 'bg-rose-100 text-rose-800 ring-rose-200'
+                  : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-slate-200'
+              } ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
+            >
+              {updatingStatus ? '처리 중...' : '반려'}
+            </button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

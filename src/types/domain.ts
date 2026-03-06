@@ -1,8 +1,43 @@
-export type ReservationType = 'public' | 'phone' | 'app' | 'onsite' | 'lottery'
+export type AmenityCode =
+  | 'parking'
+  | 'shower'
+  | 'lighting'
+  | 'locker'
+  | 'rental'
+  | 'cafeteria'
 
-export type Amenity = 'parking' | 'shower' | 'lighting' | 'locker' | 'rental' | 'cafeteria'
+export type CourtSpaceType = 'indoor' | 'outdoor'
+export type PriceDayType = 'weekday' | 'weekend' | 'holiday' | 'all'
 
-export interface Court {
+export interface Amenity {
+  code: AmenityCode
+  name: string
+}
+
+export interface CourtLayout {
+  space: CourtSpaceType
+  count: number
+  surface: string
+  dayType?: PriceDayType
+  price?: number
+  note?: string
+}
+
+export type IndoorFilter = 'all' | 'indoor' | 'outdoor'
+export type SortOption = 'popular' | 'priceAsc' | 'priceDesc' | 'courts'
+
+export interface CourtFilterQuery {
+  page?: number | string
+  limit?: number | string
+  search?: string
+  regionSido?: string
+  regionSigungu?: string
+  indoor?: IndoorFilter
+  amenity?: AmenityCode | 'all'
+  sort?: SortOption
+}
+
+export interface CourtResponse {
   id: string
   name: string
   addressRoad: string
@@ -21,17 +56,46 @@ export interface Court {
   priceMax?: number
   priceNote?: string
   priceUpdatedAt?: string
-  reservationType: ReservationType
+  reservationType: string
   reservationUrl?: string
   phone?: string
   naverMapUrl?: string
   description?: string
+  courtLayouts?: CourtLayout[]
   amenities: Amenity[]
   images: string[]
   popularity?: number
 }
 
-export interface Submission {
+export interface SubmissionFilterQuery {
+  page?: number | string
+  limit?: number | string
+  status?: 'pending' | 'approved' | 'rejected'
+}
+
+export interface CreateSubmissionBody {
+  name: string
+  naverMapUrl: string
+  phone: string
+  location?: string
+  submitter?: string
+  reservationMethod?: string
+  reservationType?: string
+  note?: string
+  reservationUrl?: string
+  priceNote?: string
+  courtLayouts?: CourtLayout[]
+  amenities?: Amenity[] | AmenityCode[]
+  courtsIndoor?: number
+  courtsOutdoor?: number
+  surface?: string
+  region?: { kind: 'seoul' | 'local'; district?: string; cityOrCounty?: string }
+  addressRoad?: string
+  regionSido?: string
+  regionSigungu?: string
+}
+
+export interface SubmissionResponse {
   id: string
   name: string
   addressRoad: string
@@ -39,7 +103,7 @@ export interface Submission {
   regionSigungu: string
   submitter: string
   status: 'pending' | 'approved' | 'rejected'
-  reservationType: ReservationType
+  reservationType: string
   submittedAt: string
   note?: string
   reservationUrl?: string
@@ -48,24 +112,38 @@ export interface Submission {
   courtsIndoor?: number
   courtsOutdoor?: number
   surface?: string
+  courtLayouts?: CourtLayout[]
   amenities?: Amenity[]
   naverMapUrl?: string
 }
 
-export interface SubmissionPayload {
-  name: string
-  addressRoad: string
-  regionSido: string
-  regionSigungu: string
-  submitter?: string
-  reservationType: ReservationType
-  note?: string
-  reservationUrl?: string
-  phone?: string
-  priceNote?: string
+export interface UpdateCourtBody {
+  name?: string
+  addressRoad?: string
+  regionSido?: string
+  regionSigungu?: string
+  lat?: number
+  lng?: number
   courtsIndoor?: number
   courtsOutdoor?: number
-  surface?: string
-  amenities?: Amenity[]
+  courtSurface?: string
+  reservationType?: string
+  reservationUrl?: string
+  phone?: string
   naverMapUrl?: string
+  description?: string
+  priceType?: 'hourly' | 'rental' | 'membership'
+  priceNote?: string
+  amenities?: Amenity[] | AmenityCode[]
+  courtLayouts?: CourtLayout[]
+  images?: string[]
+  popularity?: number
 }
+
+export interface UpdateSubmissionStatusBody {
+  status: 'pending' | 'approved' | 'rejected'
+}
+
+export type Court = CourtResponse
+export type Submission = SubmissionResponse
+export type SubmissionPayload = CreateSubmissionBody

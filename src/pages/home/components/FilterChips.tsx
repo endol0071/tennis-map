@@ -36,7 +36,7 @@ export function FilterChips({ filters, onOpen }: Props) {
 
   return (
     <ScrollArea className="w-full">
-      <div className="flex gap-2 pb-1">
+      <div className="flex gap-2 px-0.5 pt-1 pb-1">
         <Button variant="outline" size="sm" onClick={onOpen} className="gap-2 rounded-full">
           <Filter className="h-4 w-4" />
           필터

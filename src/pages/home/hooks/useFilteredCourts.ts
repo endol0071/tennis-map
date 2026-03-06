@@ -1,15 +1,12 @@
 import { useMemo } from 'react'
-import type { Amenity, Court } from '../types'
-
-type IndoorFilter = 'all' | 'indoor' | 'outdoor'
-type SortOption = 'popular' | 'priceAsc' | 'priceDesc' | 'courts'
+import type { AmenityCode, Court, IndoorFilter, SortOption } from '../../../types/domain'
 
 export interface Filters {
   search: string
   regionSido: string
   regionSigungu: string
   indoor: IndoorFilter
-  amenity: Amenity | 'all'
+  amenity: AmenityCode | 'all'
   sort: SortOption
 }
 
@@ -47,7 +44,7 @@ export function useFilteredCourts(courts: Court[], filters: Filters) {
 
     if (filters.amenity !== 'all') {
       const amenity = filters.amenity
-      list = list.filter((court) => court.amenities.includes(amenity))
+      list = list.filter((court) => court.amenities.some((item) => item.code === amenity))
     }
 
     switch (filters.sort) {
