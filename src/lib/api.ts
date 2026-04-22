@@ -162,6 +162,13 @@ export class ApiError extends Error {
 }
 
 export function getApiErrorDetails(error: unknown) {
+  if (!error) {
+    return {
+      message: '',
+      fieldErrors: {},
+    }
+  }
+
   if (error instanceof ApiError) {
     return {
       message: error.message,

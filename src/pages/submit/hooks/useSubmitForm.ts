@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { createSubmission, getApiErrorDetails } from '../../../lib/api'
+import { useToast } from '../../../components/ui/use-toast'
 import type { AmenityCode, CourtLayout, CreateSubmissionBody } from '../../../types/domain'
 
 export interface DraftCourtLayout {
@@ -69,6 +70,7 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
   const [courtLayoutError, setCourtLayoutError] = useState<string>('')
   const [submitted, setSubmitted] = useState(false)
   const queryClient = useQueryClient()
+  const { toast } = useToast()
 
   const mutation = useMutation({
     mutationFn: createSubmission,
@@ -79,6 +81,11 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
       setDraftCourtLayout(initialDraftCourtLayout)
       setCourtLayoutError('')
       queryClient.invalidateQueries({ queryKey: ['submissions'] })
+      toast({
+        title: '제보가 접수되었습니다.',
+        description: '검토 후 테니스맵에 반영됩니다.',
+        variant: 'success',
+      })
       options.onSuccess?.()
     },
   })
@@ -210,12 +217,14 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
     mutation.mutate(payload)
   }
 
+  const apiError = getApiErrorDetails(mutation.error)
+
   return {
     form,
     submitted,
     submitting: mutation.isPending,
-    errorMessage: getApiErrorDetails(mutation.error).message,
-    fieldErrors: getApiErrorDetails(mutation.error).fieldErrors,
+    errorMessage: mutation.isError ? apiError.message : undefined,
+    fieldErrors: mutation.isError ? apiError.fieldErrors : undefined,
     update,
     toggleAmenity,
     isDraftCourtLayoutOpen,

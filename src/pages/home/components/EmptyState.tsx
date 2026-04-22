@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 interface Props {
   onReset: () => void
 }
@@ -13,6 +15,14 @@ export function EmptyState({ onReset }: Props) {
       >
         필터 초기화
       </button>
+      <div className="mt-3">
+        <Link
+          to="/submit"
+          className="inline-flex rounded-full border border-slate-200 px-5 py-2 text-sm font-semibold text-slate-700 transition hover:border-emerald-300 hover:text-emerald-700"
+        >
+          찾는 코트 제보하기
+        </Link>
+      </div>
     </div>
   )
 }

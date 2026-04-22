@@ -33,6 +33,7 @@ function AdminPage() {
   const navigate = useNavigate()
   const [status, setStatus] = useState<'all' | Submission['status']>('all')
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null)
+  const [selectedSubmissionSnapshot, setSelectedSubmissionSnapshot] = useState<Submission | null>(null)
   const queryClient = useQueryClient()
   const { data: submissions = [], isLoading, isError } = useQuery({
     queryKey: ['submissions', status],
@@ -79,15 +80,18 @@ function AdminPage() {
   const handleDeleteCourt = async (id: string) => {
     await courtDeleteMutation.mutateAsync(id)
     setSelectedSubmissionId(null)
+    setSelectedSubmissionSnapshot(null)
   }
 
   const updatingId = statusMutation.variables?.id
 
   const filtered = submissions
-  const selectedSubmission = useMemo(
+  const liveSelectedSubmission = useMemo(
     () => submissions.find((item) => item.id === selectedSubmissionId) ?? null,
     [submissions, selectedSubmissionId],
   )
+
+  const selectedSubmission = liveSelectedSubmission ?? selectedSubmissionSnapshot
 
   const selectedCourtId = useMemo(() => {
     if (!selectedSubmission) return null
@@ -143,6 +147,18 @@ function AdminPage() {
       return
     }
     navigate('/')
+  }
+
+  const handleSelectSubmission = (submission: Submission) => {
+    setSelectedSubmissionId(submission.id)
+    setSelectedSubmissionSnapshot(submission)
+  }
+
+  const handleSubmissionModalOpenChange = (open: boolean) => {
+    if (!open) {
+      setSelectedSubmissionId(null)
+      setSelectedSubmissionSnapshot(null)
+    }
   }
 
   return (
@@ -219,7 +235,7 @@ function AdminPage() {
         filtered.length > 0 ? (
           <div className="space-y-3">
             {filtered.map((item) => (
-              <SubmissionRow key={item.id} submission={item} onSelect={setSelectedSubmissionId} />
+              <SubmissionRow key={item.id} submission={item} onSelect={handleSelectSubmission} />
             ))}
           </div>
         ) : (
@@ -238,11 +254,7 @@ function AdminPage() {
         courtId={selectedCourtId}
         court={selectedCourt}
         open={selectedSubmission !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedSubmissionId(null)
-          }
-        }}
+        onOpenChange={handleSubmissionModalOpenChange}
         onSaveCourt={handleSaveCourt}
         onDeleteCourt={handleDeleteCourt}
         onChangeStatus={handleUpdateStatus}

@@ -6,6 +6,8 @@ interface Props {
   court: Court
 }
 
+const PLACEHOLDER_IMAGE = 'https://placehold.co/1200x800?text=Tennis+Court'
+
 function Badge({ children }: { children: React.ReactNode }) {
   return (
     <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
@@ -15,6 +17,8 @@ function Badge({ children }: { children: React.ReactNode }) {
 }
 
 export function CourtCard({ court }: Props) {
+  const primaryImage = court.images[0]?.trim() || PLACEHOLDER_IMAGE
+
   return (
     <Link
       to={`/courts/${court.id}`}
@@ -22,8 +26,13 @@ export function CourtCard({ court }: Props) {
     >
       <div className="relative h-40 overflow-hidden">
         <img
-          src={court.images[0]}
+          src={primaryImage}
           alt={court.name}
+          onError={(event) => {
+            if (event.currentTarget.src !== PLACEHOLDER_IMAGE) {
+              event.currentTarget.src = PLACEHOLDER_IMAGE
+            }
+          }}
           className="h-full w-full object-cover transition duration-700 group-hover:scale-105"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/5 to-transparent" />

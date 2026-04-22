@@ -9,14 +9,14 @@ const statusColor: Record<Submission['status'], string> = {
 
 interface Props {
   submission: Submission
-  onSelect?: (id: string) => void
+  onSelect?: (submission: Submission) => void
 }
 
 export function SubmissionRow({ submission, onSelect }: Props) {
   return (
     <button
       type="button"
-      onClick={() => onSelect?.(submission.id)}
+      onClick={() => onSelect?.(submission)}
       className="flex w-full flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left text-sm text-slate-700 ring-1 ring-emerald-50 shadow-sm transition hover:border-emerald-300 hover:ring-emerald-100"
     >
       <div className="flex items-start justify-between gap-2">

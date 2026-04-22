@@ -209,6 +209,19 @@ function CourtDetailPage() {
               </div>
             </div>
           ) : null}
+
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">
+            <p className="font-semibold text-slate-900">정보가 다르거나 누락됐나요?</p>
+            <p className="mt-1 text-slate-500">
+              예약 방식, 가격, 편의시설이 실제와 다르면 제보로 알려주세요.
+            </p>
+            <Link
+              to="/submit"
+              className="mt-3 inline-flex rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-200 transition hover:brightness-110"
+            >
+              정보 수정 제보하기
+            </Link>
+          </div>
         </div>
       </div>
 
