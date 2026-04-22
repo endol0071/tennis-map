@@ -53,6 +53,12 @@ const statusLabel: Record<Submission['status'], string> = {
   rejected: '반려',
 }
 
+function formatSourceLabel(submission: Submission) {
+  return submission.sourceType === 'crawl'
+    ? `크롤링${submission.sourceName ? ` · ${submission.sourceName}` : ''}`
+    : '사용자 제보'
+}
+
 interface FieldProps {
   label: string
   value: ReactNode
@@ -103,10 +109,10 @@ function buildInitialForm(submission: Submission, court?: Court | null): EditFor
     layoutSource?.map((layout) => ({
       space: layout.space,
       count: String(layout.count),
-      surface: layout.surface,
+      surface: layout.surface || '정보 없음.',
       dayType: layout.dayType ?? 'all',
       price: layout.price ? String(layout.price) : '',
-      note: layout.note ?? '',
+      note: layout.note ?? '요일 구분: 정보 없음. 금액: 정보 없음.',
     })) ?? []
 
   const fallbackLayouts: EditableLayout[] = []
@@ -116,20 +122,31 @@ function buildInitialForm(submission: Submission, court?: Court | null): EditFor
     fallbackLayouts.push({
       space: 'indoor',
       count: String(baseIndoorCount),
-      surface: court?.courtSurface ?? submission.surface ?? '',
+      surface: court?.courtSurface ?? submission.surface ?? '정보 없음.',
       dayType: 'all',
       price: '',
-      note: '',
+      note: '요일 구분: 정보 없음. 금액: 정보 없음.',
     })
   }
   if (!fromLayouts.length && baseOutdoorCount && baseOutdoorCount > 0) {
     fallbackLayouts.push({
       space: 'outdoor',
       count: String(baseOutdoorCount),
-      surface: court?.courtSurface ?? submission.surface ?? '',
+      surface: court?.courtSurface ?? submission.surface ?? '정보 없음.',
       dayType: 'all',
       price: '',
-      note: '',
+      note: '요일 구분: 정보 없음. 금액: 정보 없음.',
+    })
+  }
+
+  if (!fromLayouts.length && !fallbackLayouts.length) {
+    fallbackLayouts.push({
+      space: 'outdoor',
+      count: '1',
+      surface: court?.courtSurface ?? submission.surface ?? '정보 없음.',
+      dayType: 'all',
+      price: '',
+      note: '요일 구분: 정보 없음. 금액: 정보 없음.',
     })
   }
 
@@ -234,7 +251,14 @@ export function SubmissionDetailModal({
         ...prev,
         courtLayouts: [
           ...prev.courtLayouts,
-          { space: 'indoor', count: '', surface: '', dayType: 'all', price: '', note: '' },
+          {
+            space: 'indoor',
+            count: '',
+            surface: '정보 없음.',
+            dayType: 'all',
+            price: '',
+            note: '요일 구분: 정보 없음. 금액: 정보 없음.',
+          },
         ],
       }
     })
@@ -309,13 +333,7 @@ export function SubmissionDetailModal({
         return acc
       }
 
-      const surface = layout.surface.trim()
-      if (!surface) {
-        showValidationError(`${index + 1}번째 코트의 바닥재를 입력해 주세요.`, {
-          courtLayouts: [`${index + 1}번째 코트의 바닥재를 입력해 주세요.`],
-        })
-        return acc
-      }
+      const surface = layout.surface.trim() || '정보 없음.'
 
       const hasPriceInput = layout.price.trim() !== ''
       const price = toOptionalNumber(layout.price)
@@ -474,6 +492,9 @@ export function SubmissionDetailModal({
             <span className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusColor[submission.status]}`}>
               {statusLabel[submission.status]}
             </span>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+              {formatSourceLabel(submission)}
+            </span>
           </div>
           <DialogDescription className="leading-relaxed">
             코트 상세 정보를 먼저 수정 저장하고, 확인 후 승인할 수 있습니다.
@@ -505,6 +526,23 @@ export function SubmissionDetailModal({
             <Field label="제보 ID" value={submission.id} />
             <Field label="제출일" value={submission.submittedAt} />
             <Field label="제보자" value={submission.submitter} />
+            <Field label="유입 경로" value={formatSourceLabel(submission)} />
+            {submission.externalId && <Field label="외부 ID" value={submission.externalId} />}
+            {submission.sourceUrl && (
+              <Field
+                label="원본 링크"
+                value={
+                  <a
+                    href={submission.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-emerald-700 underline underline-offset-2"
+                  >
+                    {submission.sourceUrl}
+                  </a>
+                }
+              />
+            )}
             <div className="space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">코트명</p>
               <input

@@ -7,6 +7,11 @@ const statusColor: Record<Submission['status'], string> = {
   rejected: 'bg-rose-100 text-rose-800 ring-rose-200',
 }
 
+const sourceLabel = (submission: Submission) =>
+  submission.sourceType === 'crawl'
+    ? `크롤링${submission.sourceName ? ` · ${submission.sourceName}` : ''}`
+    : '사용자 제보'
+
 interface Props {
   submission: Submission
   onSelect?: (submission: Submission) => void
@@ -37,6 +42,9 @@ export function SubmissionRow({ submission, onSelect }: Props) {
         </span>
         <span className="rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200">
           {formatReservationType(submission.reservationType)}
+        </span>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700 ring-1 ring-emerald-200">
+          {sourceLabel(submission)}
         </span>
       </div>
 

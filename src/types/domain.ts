@@ -98,6 +98,11 @@ export interface CreateSubmissionBody {
 export interface SubmissionResponse {
   id: string
   name: string
+  linkedCourtId?: string
+  sourceType?: 'user' | 'crawl'
+  sourceName?: string
+  sourceUrl?: string
+  externalId?: string
   addressRoad: string
   regionSido: string
   regionSigungu: string
@@ -115,6 +120,7 @@ export interface SubmissionResponse {
   courtLayouts?: CourtLayout[]
   amenities?: Amenity[]
   naverMapUrl?: string
+  rawPayload?: unknown
 }
 
 export interface UpdateCourtBody {
