@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { createSubmission } from '../../../lib/api'
+import { createSubmission, getApiErrorDetails } from '../../../lib/api'
 import type { AmenityCode, CourtLayout, CreateSubmissionBody } from '../../../types/domain'
 
 export interface DraftCourtLayout {
@@ -83,12 +83,20 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
     },
   })
 
+  const clearSubmissionError = () => {
+    if (mutation.error) {
+      mutation.reset()
+    }
+  }
+
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+    clearSubmissionError()
     setSubmitted(false)
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
   const toggleAmenity = (amenity: AmenityCode) => {
+    clearSubmissionError()
     setForm((prev) => {
       const exists = prev.amenities.includes(amenity)
       const amenities = exists ? prev.amenities.filter((a) => a !== amenity) : [...prev.amenities, amenity]
@@ -97,18 +105,21 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
   }
 
   const updateDraftCourtLayout = <K extends keyof DraftCourtLayout>(key: K, value: DraftCourtLayout[K]) => {
+    clearSubmissionError()
     setSubmitted(false)
     setCourtLayoutError('')
     setDraftCourtLayout((prev) => ({ ...prev, [key]: value }))
   }
 
   const openDraftCourtLayout = () => {
+    clearSubmissionError()
     setSubmitted(false)
     setCourtLayoutError('')
     setIsDraftCourtLayoutOpen(true)
   }
 
   const cancelDraftCourtLayout = () => {
+    clearSubmissionError()
     setCourtLayoutError('')
     setDraftCourtLayout(initialDraftCourtLayout)
     setIsDraftCourtLayoutOpen(false)
@@ -150,6 +161,7 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
       nextCourtLayout.note = note
     }
 
+    clearSubmissionError()
     setSubmitted(false)
     setCourtLayoutError('')
     setForm((prev) => ({
@@ -161,6 +173,7 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
   }
 
   const removeCourtLayout = (index: number) => {
+    clearSubmissionError()
     setSubmitted(false)
     setForm((prev) => ({
       ...prev,
@@ -179,6 +192,7 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    clearSubmissionError()
     setCourtLayoutError('')
 
     const payload: CreateSubmissionBody = {
@@ -200,7 +214,8 @@ export function useSubmitForm(options: UseSubmitFormOptions = {}) {
     form,
     submitted,
     submitting: mutation.isPending,
-    error: mutation.error,
+    errorMessage: getApiErrorDetails(mutation.error).message,
+    fieldErrors: getApiErrorDetails(mutation.error).fieldErrors,
     update,
     toggleAmenity,
     isDraftCourtLayoutOpen,

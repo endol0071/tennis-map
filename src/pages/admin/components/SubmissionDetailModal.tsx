@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -6,10 +6,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../../components/ui/dialog'
+import { getApiErrorDetails, type ApiFieldErrors } from '../../../lib/api'
 import type { AmenityCode, Court, PriceDayType, UpdateCourtBody } from '../../../types/domain'
 import type { Submission } from '../types'
 import { formatReservationType } from '../../../lib/reservation'
-import { useToast } from '../../../components/ui/toast'
+import { useToast } from '../../../components/ui/use-toast'
 import {
   amenityOptions,
   courtSpaceOptions,
@@ -64,6 +65,11 @@ function Field({ label, value }: FieldProps) {
       <div className="text-sm text-slate-800">{value}</div>
     </div>
   )
+}
+
+function FieldErrorText({ message }: { message?: string }) {
+  if (!message) return null
+  return <p className="mt-1 text-xs text-rose-600">{message}</p>
 }
 
 function toOptionalText(value: string) {
@@ -148,9 +154,9 @@ interface Props {
   court?: Court | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSaveCourt: (id: string, payload: UpdateCourtBody) => Promise<void>
+  onSaveCourt: (id: string, payload: UpdateCourtBody) => Promise<unknown>
   onDeleteCourt: (id: string) => Promise<void>
-  onChangeStatus: (id: string, status: Submission['status']) => Promise<void>
+  onChangeStatus: (id: string, status: Submission['status']) => Promise<Submission>
   updatingStatus?: boolean
   savingCourt?: boolean
   deletingCourt?: boolean
@@ -169,33 +175,12 @@ export function SubmissionDetailModal({
   savingCourt,
   deletingCourt,
 }: Props) {
-  const [form, setForm] = useState<EditForm | null>(null)
+  const [form, setForm] = useState<EditForm | null>(() => (submission ? buildInitialForm(submission, court) : null))
   const [errorMessage, setErrorMessage] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<ApiFieldErrors>({})
   const [successMessage, setSuccessMessage] = useState('')
-  const [resolvedCourtId, setResolvedCourtId] = useState<string | null>(null)
-  const activeSubmissionIdRef = useRef<string | null>(null)
+  const [resolvedCourtId, setResolvedCourtId] = useState<string | null>(courtId ?? null)
   const { toast } = useToast()
-
-  useEffect(() => {
-    if (!submission) return
-    const isNewSubmission = activeSubmissionIdRef.current !== submission.id
-
-    if (isNewSubmission) {
-      activeSubmissionIdRef.current = submission.id
-      setForm(buildInitialForm(submission, court))
-      setResolvedCourtId(courtId ?? null)
-      setErrorMessage('')
-      setSuccessMessage('')
-      return
-    }
-
-    if (court) {
-      setForm(buildInitialForm(submission, court))
-    }
-    if (courtId) {
-      setResolvedCourtId(courtId)
-    }
-  }, [submission, court, courtId])
 
   if (!submission || !form) {
     return null
@@ -205,17 +190,31 @@ export function SubmissionDetailModal({
   const matchedCourtId = resolvedCourtId ?? courtId
   const targetCourtId = matchedCourtId ?? resolveCourtId(submission, courtId)
   const hasMatchedCourt = matchedCourtId !== null
-  const canMutateCourtNow = hasMatchedCourt || submission.status === 'approved'
+  const canSaveCourt = matchedCourtId !== null
+  const approvalHint = hasMatchedCourt
+    ? `승인 시 연결된 코트(${matchedCourtId})를 업데이트합니다.`
+    : '승인 시 이 제보를 기준으로 새 코트를 생성합니다.'
+  const flatFieldErrors = Object.values(fieldErrors).flat()
 
-  const updateField = <K extends keyof EditForm>(key: K, value: EditForm[K]) => {
+  const clearMessages = () => {
     setErrorMessage('')
     setSuccessMessage('')
+    setFieldErrors({})
+  }
+
+  const showValidationError = (message: string, nextFieldErrors: ApiFieldErrors = {}) => {
+    setErrorMessage(message)
+    setSuccessMessage('')
+    setFieldErrors(nextFieldErrors)
+  }
+
+  const updateField = <K extends keyof EditForm>(key: K, value: EditForm[K]) => {
+    clearMessages()
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev))
   }
 
   const updateLayout = <K extends keyof EditableLayout>(index: number, key: K, value: EditableLayout[K]) => {
-    setErrorMessage('')
-    setSuccessMessage('')
+    clearMessages()
     setForm((prev) => {
       if (!prev) return prev
       return {
@@ -228,8 +227,7 @@ export function SubmissionDetailModal({
   }
 
   const addLayout = () => {
-    setErrorMessage('')
-    setSuccessMessage('')
+    clearMessages()
     setForm((prev) => {
       if (!prev) return prev
       return {
@@ -243,8 +241,7 @@ export function SubmissionDetailModal({
   }
 
   const removeLayout = (index: number) => {
-    setErrorMessage('')
-    setSuccessMessage('')
+    clearMessages()
     setForm((prev) => {
       if (!prev) return prev
       return {
@@ -255,8 +252,7 @@ export function SubmissionDetailModal({
   }
 
   const toggleAmenity = (amenity: AmenityCode) => {
-    setErrorMessage('')
-    setSuccessMessage('')
+    clearMessages()
     setForm((prev) => {
       if (!prev) return prev
       const exists = prev.amenities.includes(amenity)
@@ -268,25 +264,36 @@ export function SubmissionDetailModal({
   const buildPayload = () => {
     const name = form.name.trim()
     if (!name) {
-      setErrorMessage('코트명을 입력해 주세요.')
+      showValidationError('코트명을 입력해 주세요.', { name: ['코트명을 입력해 주세요.'] })
       return null
     }
 
     const addressRoad = form.addressRoad.trim()
     if (!addressRoad) {
-      setErrorMessage('주소를 입력해 주세요.')
+      showValidationError('주소를 입력해 주세요.', { addressRoad: ['주소를 입력해 주세요.'] })
       return null
     }
 
     const regionSido = form.regionSido.trim()
     const regionSigungu = form.regionSigungu.trim()
     if (!regionSido || !regionSigungu) {
-      setErrorMessage('지역(시/도, 시/군/구)을 입력해 주세요.')
+      const nextFieldErrors: ApiFieldErrors = {}
+      if (!regionSido) {
+        nextFieldErrors.regionSido = ['시/도를 입력해 주세요.']
+      }
+      if (!regionSigungu) {
+        nextFieldErrors.regionSigungu = ['시/군/구를 입력해 주세요.']
+      }
+      showValidationError('지역(시/도, 시/군/구)을 입력해 주세요.', {
+        ...nextFieldErrors,
+      })
       return null
     }
 
     if (!form.courtLayouts.length) {
-      setErrorMessage('코트 구성을 최소 1개 등록해 주세요.')
+      showValidationError('코트 구성을 최소 1개 등록해 주세요.', {
+        courtLayouts: ['코트 구성을 최소 1개 등록해 주세요.'],
+      })
       return null
     }
 
@@ -296,20 +303,26 @@ export function SubmissionDetailModal({
     const courtLayouts = form.courtLayouts.reduce<NonNullable<UpdateCourtBody['courtLayouts']>>((acc, layout, index) => {
       const count = toOptionalNumber(layout.count)
       if (!count || count <= 0) {
-        setErrorMessage(`${index + 1}번째 코트의 면수는 1 이상 숫자로 입력해 주세요.`)
+        showValidationError(`${index + 1}번째 코트의 면수는 1 이상 숫자로 입력해 주세요.`, {
+          courtLayouts: [`${index + 1}번째 코트의 면수를 확인해 주세요.`],
+        })
         return acc
       }
 
       const surface = layout.surface.trim()
       if (!surface) {
-        setErrorMessage(`${index + 1}번째 코트의 바닥재를 입력해 주세요.`)
+        showValidationError(`${index + 1}번째 코트의 바닥재를 입력해 주세요.`, {
+          courtLayouts: [`${index + 1}번째 코트의 바닥재를 입력해 주세요.`],
+        })
         return acc
       }
 
       const hasPriceInput = layout.price.trim() !== ''
       const price = toOptionalNumber(layout.price)
       if (hasPriceInput && (!price || price <= 0)) {
-        setErrorMessage(`${index + 1}번째 코트의 금액은 1원 이상 숫자로 입력해 주세요.`)
+        showValidationError(`${index + 1}번째 코트의 금액은 1원 이상 숫자로 입력해 주세요.`, {
+          courtLayouts: [`${index + 1}번째 코트의 금액을 확인해 주세요.`],
+        })
         return acc
       }
 
@@ -361,15 +374,14 @@ export function SubmissionDetailModal({
 
   const saveCourt = async () => {
     if (!matchedCourtId) {
-      setErrorMessage('이 제보는 아직 생성된 코트가 없어 수정 저장할 수 없습니다. 승인 후 코트가 생성되면 수정 가능합니다.')
+      showValidationError('이 제보는 아직 연결된 코트가 없어 수정 저장할 수 없습니다. 먼저 승인해 주세요.')
       return
     }
 
     const payload = buildPayload()
     if (!payload) return
 
-    setErrorMessage('')
-    setSuccessMessage('')
+    clearMessages()
 
     try {
       await onSaveCourt(targetCourtId, payload)
@@ -381,13 +393,14 @@ export function SubmissionDetailModal({
         variant: 'success',
       })
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '코트 정보 저장에 실패했습니다.')
+      const details = getApiErrorDetails(error)
+      setErrorMessage(details.message || '코트 정보 저장에 실패했습니다.')
+      setFieldErrors(details.fieldErrors)
     }
   }
 
   const changeStatus = async (status: Submission['status']) => {
-    setErrorMessage('')
-    setSuccessMessage('')
+    clearMessages()
 
     try {
       if (status === 'approved') {
@@ -403,25 +416,25 @@ export function SubmissionDetailModal({
             variant: 'success',
           })
         }
-        await onChangeStatus(submission.id, status)
-        if (!matchedCourtId) {
-          const createdCourtId = resolveCourtId(submission, null)
-          await onSaveCourt(createdCourtId, payload)
-          setResolvedCourtId(createdCourtId)
-          toast({
-            title: '저장 완료',
-            description: '코트 생성 후 정보가 저장되었습니다.',
-            variant: 'success',
-          })
+        const updatedSubmission = await onChangeStatus(submission.id, status)
+        if (updatedSubmission.status === 'approved') {
+          setSuccessMessage(
+            matchedCourtId
+              ? '코트 정보를 저장한 뒤 승인했습니다.'
+              : '승인했습니다. 새 코트 연결 정보는 목록 재조회 후 자동으로 반영됩니다.',
+          )
+        } else {
+          setSuccessMessage(`상태가 ${statusLabel[updatedSubmission.status]}로 반영되었습니다.`)
         }
-        setSuccessMessage('코트 정보 저장 후 승인 완료되었습니다.')
         return
       }
 
-      await onChangeStatus(submission.id, status)
-      setSuccessMessage('상태가 변경되었습니다.')
+      const updatedSubmission = await onChangeStatus(submission.id, status)
+      setSuccessMessage(`상태가 ${statusLabel[updatedSubmission.status]}로 변경되었습니다.`)
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '상태 변경에 실패했습니다.')
+      const details = getApiErrorDetails(error)
+      setErrorMessage(details.message || '상태 변경에 실패했습니다.')
+      setFieldErrors(details.fieldErrors)
     }
   }
 
@@ -434,12 +447,13 @@ export function SubmissionDetailModal({
     const confirmed = window.confirm('코트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')
     if (!confirmed) return
 
-    setErrorMessage('')
-    setSuccessMessage('')
+    clearMessages()
     try {
       await onDeleteCourt(matchedCourtId)
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '코트 삭제에 실패했습니다.')
+      const details = getApiErrorDetails(error)
+      setErrorMessage(details.message || '코트 삭제에 실패했습니다.')
+      setFieldErrors(details.fieldErrors)
     }
   }
 
@@ -467,7 +481,17 @@ export function SubmissionDetailModal({
         </DialogHeader>
 
         {errorMessage && (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorMessage}</div>
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            <p className="font-semibold">입력 내용을 다시 확인해 주세요.</p>
+            <p className="mt-1">{errorMessage}</p>
+            {flatFieldErrors.length > 0 && (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-rose-700">
+                {flatFieldErrors.map((message, index) => (
+                  <li key={`${message}-${index}`}>{message}</li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
         {successMessage && (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
@@ -488,6 +512,7 @@ export function SubmissionDetailModal({
                 onChange={(e) => updateField('name', e.target.value)}
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
               />
+              <FieldErrorText message={fieldErrors.name?.[0]} />
             </div>
             <div className="space-y-1 md:col-span-2">
               <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">주소(도로명)</p>
@@ -496,6 +521,7 @@ export function SubmissionDetailModal({
                 onChange={(e) => updateField('addressRoad', e.target.value)}
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
               />
+              <FieldErrorText message={fieldErrors.addressRoad?.[0]} />
             </div>
             <div className="space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">시/도</p>
@@ -504,6 +530,7 @@ export function SubmissionDetailModal({
                 onChange={(e) => updateField('regionSido', e.target.value)}
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
               />
+              <FieldErrorText message={fieldErrors.regionSido?.[0]} />
             </div>
             <div className="space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">시/군/구</p>
@@ -512,12 +539,14 @@ export function SubmissionDetailModal({
                 onChange={(e) => updateField('regionSigungu', e.target.value)}
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none"
               />
+              <FieldErrorText message={fieldErrors.regionSigungu?.[0]} />
             </div>
           </div>
         </section>
 
         <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-600">코트 상세</p>
+          <FieldErrorText message={fieldErrors.courtLayouts?.[0]} />
 
           <div className="space-y-2">
             {form.courtLayouts.map((layout, index) => (
@@ -689,13 +718,13 @@ export function SubmissionDetailModal({
         </section>
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-          {!canMutateCourtNow && <p className="text-xs text-slate-500">매칭된 코트가 없으면 저장이 실패할 수 있습니다.</p>}
+          <p className="text-xs text-slate-500">{approvalHint}</p>
           <button
             type="button"
             onClick={handleDeleteCourt}
-            disabled={isSubmitting || !canMutateCourtNow}
+            disabled={isSubmitting || !canSaveCourt}
             className={`rounded-full border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 ${
-              isSubmitting || !canMutateCourtNow ? 'cursor-not-allowed opacity-60' : ''
+              isSubmitting || !canSaveCourt ? 'cursor-not-allowed opacity-60' : ''
             }`}
           >
             {deletingCourt ? '삭제 중...' : '코트 삭제'}
@@ -705,9 +734,9 @@ export function SubmissionDetailModal({
             <button
               type="button"
               onClick={saveCourt}
-              disabled={isSubmitting}
+              disabled={isSubmitting || !canSaveCourt}
               className={`rounded-full bg-slate-800 px-4 py-2 text-sm font-semibold text-white ${
-                isSubmitting ? 'cursor-not-allowed opacity-60' : ''
+                isSubmitting || !canSaveCourt ? 'cursor-not-allowed opacity-60' : ''
               }`}
             >
               {savingCourt ? '저장 중...' : '수정 저장'}
@@ -722,7 +751,7 @@ export function SubmissionDetailModal({
                   : 'bg-slate-100 text-slate-700 ring-slate-200 hover:bg-slate-200'
               } ${isSubmitting ? 'cursor-not-allowed opacity-60' : ''}`}
             >
-              {updatingStatus ? '처리 중...' : '승인'}
+              {updatingStatus ? '처리 중...' : hasMatchedCourt ? '업데이트 후 승인' : '생성 후 승인'}
             </button>
             <button
               type="button"

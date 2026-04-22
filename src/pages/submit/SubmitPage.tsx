@@ -19,7 +19,8 @@ function SubmitPage() {
     courtLayoutError,
     submitted,
     submitting,
-    error,
+    errorMessage,
+    fieldErrors,
     update,
     toggleAmenity,
     openDraftCourtLayout,
@@ -75,7 +76,8 @@ function SubmitPage() {
         courtLayoutError={courtLayoutError}
         submitted={submitted}
         submitting={submitting}
-        errorMessage={error ? (error as Error).message : ''}
+        errorMessage={errorMessage}
+        fieldErrors={fieldErrors}
         onChange={update}
         onToggleAmenity={toggleAmenity}
         onOpenDraftCourtLayout={openDraftCourtLayout}

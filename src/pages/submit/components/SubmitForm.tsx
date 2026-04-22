@@ -6,6 +6,7 @@ import {
   reservationMethodSuggestions,
 } from '../data/options'
 import type { DraftCourtLayout, FormState } from '../hooks/useSubmitForm'
+import type { ApiFieldErrors } from '../../../lib/api'
 import type { AmenityCode } from '../../../types/domain'
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
   submitted: boolean
   submitting: boolean
   errorMessage?: string
+  fieldErrors?: ApiFieldErrors
   onChange: <K extends keyof FormState>(key: K, value: FormState[K]) => void
   onToggleAmenity: (amenity: AmenityCode) => void
   onOpenDraftCourtLayout: () => void
@@ -36,6 +38,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+function FieldErrorText({ message }: { message?: string }) {
+  if (!message) return null
+  return <p className="mt-2 text-xs text-rose-600">{message}</p>
+}
+
 export function SubmitForm({
   form,
   isDraftCourtLayoutOpen,
@@ -44,6 +51,7 @@ export function SubmitForm({
   submitted,
   submitting,
   errorMessage,
+  fieldErrors,
   onChange,
   onToggleAmenity,
   onOpenDraftCourtLayout,
@@ -64,6 +72,14 @@ export function SubmitForm({
     weekend: '주말',
     holiday: '공휴일',
   }
+  const nameError = fieldErrors?.name?.[0]
+  const naverMapUrlError = fieldErrors?.naverMapUrl?.[0]
+  const phoneError = fieldErrors?.phone?.[0]
+  const amenitiesError = fieldErrors?.amenities?.[0]
+  const courtLayoutsError = fieldErrors?.courtLayouts?.[0]
+  const bannerFieldErrors = Object.entries(fieldErrors ?? {}).filter(
+    ([field]) => !['name', 'naverMapUrl', 'phone', 'amenities', 'courtLayouts'].includes(field),
+  )
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
@@ -74,7 +90,15 @@ export function SubmitForm({
       )}
       {errorMessage && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
-          제출 중 오류가 발생했습니다: {errorMessage}
+          <p className="font-semibold">제출 내용을 다시 확인해 주세요.</p>
+          <p className="mt-1">{errorMessage}</p>
+          {bannerFieldErrors.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-rose-700">
+              {bannerFieldErrors.map(([field, messages]) => (
+                <li key={field}>{messages?.[0]}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -89,6 +113,7 @@ export function SubmitForm({
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-200"
               placeholder="예) 한강 리버사이드 테니스장"
             />
+            <FieldErrorText message={nameError} />
           </div>
           <div>
             <label className="text-xs uppercase tracking-[0.15em] text-slate-500">네이버 지도 링크*</label>
@@ -99,6 +124,7 @@ export function SubmitForm({
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-200"
               placeholder="https://map.naver.com/..."
             />
+            <FieldErrorText message={naverMapUrlError} />
           </div>
           <div>
             <label className="text-xs uppercase tracking-[0.15em] text-slate-500">전화번호*</label>
@@ -109,6 +135,7 @@ export function SubmitForm({
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-200"
               placeholder="02-000-0000"
             />
+            <FieldErrorText message={phoneError} />
           </div>
         </div>
 
@@ -191,12 +218,14 @@ export function SubmitForm({
             )
           })}
         </div>
+        <FieldErrorText message={amenitiesError} />
       </Section>
 
       <Section title="코트 정보">
         <p className="text-xs text-slate-500">
           코트 정보를 입력한 뒤 확인 버튼을 눌러 카드로 추가해 주세요. 제출 시에는 아래 카드로 확정된 정보만 전송됩니다.
         </p>
+        <FieldErrorText message={courtLayoutsError} />
         <div className="space-y-3">
           {form.courtLayouts.length === 0 && (
             <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">

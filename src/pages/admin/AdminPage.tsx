@@ -14,6 +14,13 @@ const filterButtons: { key: 'all' | Submission['status']; label: string }[] = [
   { key: 'rejected', label: '반려' },
 ]
 
+const filterLabelByStatus: Record<'all' | Submission['status'], string> = {
+  all: '전체',
+  pending: '대기',
+  approved: '승인',
+  rejected: '반려',
+}
+
 const toCourtSlug = (text: string) =>
   text
     .trim()
@@ -62,11 +69,11 @@ function AdminPage() {
   })
 
   const handleUpdateStatus = async (id: string, nextStatus: Submission['status']) => {
-    await statusMutation.mutateAsync({ id, status: nextStatus })
+    return statusMutation.mutateAsync({ id, status: nextStatus })
   }
 
   const handleSaveCourt = async (id: string, payload: UpdateCourtBody) => {
-    await courtUpdateMutation.mutateAsync({ id, payload })
+    return courtUpdateMutation.mutateAsync({ id, payload })
   }
 
   const handleDeleteCourt = async (id: string) => {
@@ -209,14 +216,24 @@ function AdminPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="space-y-3">
-          {filtered.map((item) => (
-            <SubmissionRow key={item.id} submission={item} onSelect={setSelectedSubmissionId} />
-          ))}
-        </div>
+        filtered.length > 0 ? (
+          <div className="space-y-3">
+            {filtered.map((item) => (
+              <SubmissionRow key={item.id} submission={item} onSelect={setSelectedSubmissionId} />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+            <p className="text-sm font-semibold text-slate-800">조건에 맞는 제보가 없습니다.</p>
+            <p className="mt-2 text-sm text-slate-500">
+              현재 `{filterLabelByStatus[status]}` 상태에는 표시할 제보가 없습니다.
+            </p>
+          </div>
+        )
       )}
 
       <SubmissionDetailModal
+        key={selectedSubmission?.id ?? 'submission-detail-empty'}
         submission={selectedSubmission}
         courtId={selectedCourtId}
         court={selectedCourt}

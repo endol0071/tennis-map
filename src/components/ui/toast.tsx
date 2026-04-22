@@ -1,26 +1,12 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/utils'
-
-type ToastVariant = 'success' | 'error' | 'info'
-
-type ToastPayload = {
-  title: string
-  description?: string
-  variant?: ToastVariant
-  duration?: number
-}
+import { ToastContext, type ToastPayload, type ToastVariant } from './use-toast'
 
 type ToastItem = ToastPayload & {
   id: string
   variant: ToastVariant
 }
-
-type ToastContextValue = {
-  toast: (payload: ToastPayload) => void
-}
-
-const ToastContext = createContext<ToastContextValue | null>(null)
 
 function getToastStyle(variant: ToastVariant) {
   if (variant === 'success') {
@@ -91,12 +77,4 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       </div>
     </ToastContext.Provider>
   )
-}
-
-export function useToast() {
-  const context = useContext(ToastContext)
-  if (!context) {
-    throw new Error('useToast must be used within ToastProvider')
-  }
-  return context
 }
