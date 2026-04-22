@@ -436,11 +436,14 @@ export function SubmissionDetailModal({
         }
         const updatedSubmission = await onChangeStatus(submission.id, status)
         if (updatedSubmission.status === 'approved') {
-          setSuccessMessage(
-            matchedCourtId
+          toast({
+            title: '승인 완료',
+            description: matchedCourtId
               ? '코트 정보를 저장한 뒤 승인했습니다.'
-              : '승인했습니다. 새 코트 연결 정보는 목록 재조회 후 자동으로 반영됩니다.',
-          )
+              : '제보를 승인했습니다.',
+            variant: 'success',
+          })
+          onOpenChange(false)
         } else {
           setSuccessMessage(`상태가 ${statusLabel[updatedSubmission.status]}로 반영되었습니다.`)
         }

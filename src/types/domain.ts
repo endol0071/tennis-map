@@ -78,6 +78,7 @@ export interface CreateSubmissionBody {
   naverMapUrl: string
   phone: string
   location?: string
+  images?: string[]
   submitter?: string
   reservationMethod?: string
   reservationType?: string
@@ -120,6 +121,7 @@ export interface SubmissionResponse {
   courtLayouts?: CourtLayout[]
   amenities?: Amenity[]
   naverMapUrl?: string
+  images?: string[]
   rawPayload?: unknown
 }
 
